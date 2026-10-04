@@ -147,7 +147,6 @@ body {
 
 /* Grid Forms */
 .g { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
-.g-2 { grid-template-columns: 1fr 1fr; }
 label { display: block; font-size: 12px; font-weight: 600; color: var(--mut); margin-bottom: 4px; }
 input, select, textarea {
   width: 100%;
@@ -186,6 +185,32 @@ button.p:hover { background: var(--ac-hover); border-color: var(--ac-hover); }
 button.warn { background: var(--warn); color: #fff; border-color: var(--warn); }
 button.sm { padding: 4px 8px; font-size: 12px; border-radius: 6px; }
 .btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+
+/* Category Tags */
+.cat-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: var(--bg);
+  border: 1px solid var(--bd);
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.cat-tag-del {
+  color: var(--bad);
+  cursor: pointer;
+  font-weight: 700;
+  border-radius: 50%;
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bad-bg);
+}
+.cat-tag-del:hover { background: var(--bad); color: #fff; }
 
 /* Tables */
 .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
@@ -323,7 +348,7 @@ tr:hover td { background: rgba(0,0,0,0.015); }
       <button class="tab-btn" onclick="setTab('entry')">📝 Daily Entry</button>
       <button class="tab-btn" onclick="setTab('fleet')">🚚 Fleet & Vehicles</button>
       <button class="tab-btn adm" onclick="setTab('bulk')">⚡ Bulk Upload (ERP/Excel)</button>
-      <button class="tab-btn adm" onclick="setTab('admin')">👥 Users & Depots</button>
+      <button class="tab-btn adm" onclick="setTab('admin')">👥 Users & Categories</button>
     </div>
 
     <!-- ========================================== -->
@@ -434,7 +459,7 @@ tr:hover td { background: rgba(0,0,0,0.015); }
         <div id="ef">
           <div class="g">
             <div><label>Depot</label><select id="dep" onchange="syncDepotEntryForm()"></select></div>
-            <div><label>Category</label><select id="cat" onchange="syncDepotEntryForm()"><option>Frozen</option><option>Chicken</option><option>Egg</option><option>Dairy</option><option>Others</option></select></div>
+            <div><label>Category</label><select id="cat" onchange="syncDepotEntryForm()"></select></div>
             <div><label>Orders (Qty)</label><input id="o" type="number" min="0"></div>
             <div><label>Delivered (Qty)</label><input id="v" type="number" min="0"></div>
             <div><label>Closing Stock (Qty)</label><input id="s" type="number" min="0"></div>
@@ -609,7 +634,27 @@ Savar	Egg	42000	7500" oninput="parsePastedTable()"></textarea>
     <!-- ========================================== -->
     <div id="tab-admin" class="card adm hid">
       <div class="card-header">
-        <div class="card-title">👥 User Management & Depot Assignment</div>
+        <div class="card-title">👥 User Management & Product Categories</div>
+      </div>
+
+      <!-- DYNAMIC PRODUCT CATEGORIES MANAGEMENT -->
+      <div class="card" style="margin-bottom:20px; background:var(--bg); border:1px solid var(--bd);">
+        <div class="card-header">
+          <div class="card-title" style="font-size:14px;">🏷️ Product Categories (ডিপো রিপোর্টের ক্যাটাগরি তালিকা)</div>
+        </div>
+        <p class="sub" style="margin-bottom:12px;">
+          এখানে যেকোনো নতুন প্রোডাক্ট ক্যাটাগরি (যেমন Bakery, Fish, Feed, Beef ইত্যাদি) যোগ করতে পারবেন। এটি স্বয়ংক্রিয়ভাবে সব ডিপোর এন্ট্রি ফর্ম ও হোয়াটসঅ্যাপ রিপোর্টে যুক্ত হবে।
+        </p>
+        <div id="cat_list_wrap" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px;"></div>
+        <div class="g" style="grid-template-columns: 2fr 1fr; max-width:500px;">
+          <div>
+            <label>New Category Name</label>
+            <input id="new_cat_name" placeholder="e.g. Bakery, Fish, Feed" onkeydown="if(event.key==='Enter')addCategory()">
+          </div>
+          <div style="display:flex; align-items:flex-end;">
+            <button class="p" onclick="addCategory()">+ Add Category</button>
+          </div>
+        </div>
       </div>
 
       <!-- Password Reset Requests -->
@@ -656,7 +701,7 @@ Savar	Egg	42000	7500" oninput="parsePastedTable()"></textarea>
 </div>
 
 <script>
-const CATS = ['Frozen', 'Chicken', 'Egg', 'Dairy', 'Others'];
+let CATS = ['Frozen', 'Chicken', 'Egg', 'Dairy', 'Others'];
 let me = null, deps = [], ents = [], vehicles = [], users = [];
 let parsedBulkRows = [];
 
@@ -706,6 +751,61 @@ function setTab(tabName) {
   });
 }
 
+// Category Management Functions
+async function loadCategories() {
+  try {
+    const res = await api('GET', '/api/categories');
+    if (res.categories && res.categories.length) {
+      CATS = res.categories;
+    }
+    // Update Category Dropdown in Daily Entry
+    const catSel = $('cat');
+    const curCat = catSel.value;
+    catSel.innerHTML = CATS.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('');
+    if (CATS.includes(curCat)) catSel.value = curCat;
+
+    // Render Category Tags in Admin Panel
+    const wrap = $('cat_list_wrap');
+    if (wrap) {
+      wrap.innerHTML = CATS.map(c => `
+        <span class="cat-tag">
+          ${esc(c)}
+          <span class="cat-tag-del" title="Delete category" onclick="delCategory('${esc(c)}')">×</span>
+        </span>
+      `).join('');
+    }
+  } catch (e) {
+    console.error('Category load error:', e);
+  }
+}
+
+async function addCategory() {
+  const inp = $('new_cat_name');
+  const name = inp.value.trim();
+  if (!name) return msg('Please enter a category name');
+  try {
+    await api('POST', '/api/categories', { name });
+    inp.value = '';
+    msg(`Category "${name}" added successfully ✓`, true);
+    await loadCategories();
+    renderAll();
+  } catch (e) {
+    msg(e.message);
+  }
+}
+
+async function delCategory(name) {
+  if (!confirm(`Are you sure you want to remove category "${name}"?`)) return;
+  try {
+    await api('DELETE', `/api/categories/${encodeURIComponent(name)}`);
+    msg(`Category "${name}" removed ✓`, true);
+    await loadCategories();
+    renderAll();
+  } catch (e) {
+    msg(e.message);
+  }
+}
+
 // Initial Boot
 async function boot() {
   try {
@@ -737,6 +837,7 @@ async function boot() {
     return;
   }
 
+  await loadCategories();
   await loadAll();
   if (isAdmin) loadUsers();
   setInterval(() => { if (!document.hidden && me && !me.must_change) loadAll(true); }, 30000);
@@ -835,7 +936,7 @@ function getCategoryTotals() {
   const t = {};
   CATS.forEach(c => { t[c] = { o: 0, v: 0, s: 0, a: 0, n: 0 }; });
   ents.forEach(r => {
-    const x = t[r.category] || t.Others;
+    const x = t[r.category] || (t.Others = t.Others || { o: 0, v: 0, s: 0, a: 0, n: 0 });
     x.n++;
     x.o += r.orders;
     x.v += r.delivered;
@@ -851,8 +952,10 @@ function renderAll() {
   const catTotals = getCategoryTotals();
   let totOrders = 0, totDelivered = 0;
   CATS.forEach(c => {
-    totOrders += catTotals[c].o;
-    totDelivered += catTotals[c].v;
+    if (catTotals[c]) {
+      totOrders += catTotals[c].o;
+      totDelivered += catTotals[c].v;
+    }
   });
   const totPending = Math.max(0, totOrders - totDelivered);
   $('kpi-pending').textContent = fmt(totPending);
@@ -883,11 +986,11 @@ function renderAll() {
 
   // 2. Summary Category Table
   $('tt').innerHTML = CATS.map(c => {
-    const x = catTotals[c];
+    const x = catTotals[c] || { o: 0, v: 0, s: 0, a: 0, n: 0 };
     const cov = x.a > 0 ? (x.s / x.a).toFixed(1) : '–';
     const covClass = x.a > 0 && (x.s / x.a) < 3 ? 'cover-bad' : 'cover-ok';
     return `<tr>
-      <td><b>${c}</b></td>
+      <td><b>${esc(c)}</b></td>
       <td class="num">${fmt(x.o)}</td>
       <td class="num">${fmt(x.v)}</td>
       <td class="num" style="color:var(--warn)">${fmt(x.o - x.v)}</td>
@@ -1055,7 +1158,7 @@ function formatDateWhatsApp(dateStr) {
   return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 }
 
-// WhatsApp Report Generator (Exact match to User's Specification)
+// WhatsApp Report Generator (Exact match to User's Specification with Dynamic Categories)
 function genReport() {
   const head = $('head').value || 'Atikur';
   const dateFormatted = formatDateWhatsApp($('date').value);
@@ -1086,14 +1189,14 @@ function genReport() {
   ];
 
   CATS.forEach(c => {
-    const x = catTotals[c];
+    const x = catTotals[c] || { o: 0, v: 0, s: 0, a: 0 };
     L.push(`- ${c}: Orders ${fmt(x.o)} | Delivered ${fmt(x.v)} | Pending ${fmt(x.o - x.v)}`);
   });
 
   L.push(`- Total vehicle on road: ${totVehiclesOnRoad}`);
 
-  // Stock cover line: Frozen ___ | Chicken ___ | Egg ___ | Dairy ___ days
-  const coverParts = ['Frozen', 'Chicken', 'Egg', 'Dairy'].map(c => {
+  // Stock cover line: Frozen ___ | Chicken ___ | Egg ___ | Dairy ___ ... days
+  const coverParts = CATS.map(c => {
     const x = catTotals[c];
     const days = (x && x.a > 0) ? (x.s / x.a).toFixed(1) : '–';
     return `${c} ${days}`;
@@ -1106,7 +1209,6 @@ function genReport() {
     L.push(`1. None`);
   } else {
     rawIssues.forEach((issueText, idx) => {
-      // Remove manual numbering if user typed it
       const clean = issueText.replace(/^\d+[\.\)]\s*/, '');
       L.push(`${idx + 1}. ${clean}`);
     });
@@ -1224,7 +1326,7 @@ function processParsedJsonRows(rows) {
       parsedBulkRows.push({
         id: idx + 1,
         depot: matchedDepot,
-        category: matchedCat || 'Frozen',
+        category: matchedCat || (CATS[0] || 'Frozen'),
         orders: rawOrders !== null && rawOrders !== '' ? num(rawOrders) : null,
         delivered: rawDelivered !== null && rawDelivered !== '' ? num(rawDelivered) : null,
         stock: rawStock !== null && rawStock !== '' ? num(rawStock) : null,
