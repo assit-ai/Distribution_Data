@@ -330,7 +330,7 @@ tr:hover td { background: rgba(0,0,0,0.015); }
   <!-- Mandatory Password Change Modal -->
   <div id="pw" class="card hid">
     <div class="card-title">🔐 Set New Password</div>
-    <div id="pwn" class="sub" style="margin-bottom:10px;">First time login detected. Please set a secure password (min 8 chars).</div>
+    <div id="pwn" class="sub" style="margin-bottom:10px;">First time login detected. Please set a secure password (min 8 characters).</div>
     <div class="g">
       <div><label>Current Password</label><input id="pc" type="password"></div>
       <div><label>New Password (min 8)</label><input id="pn" type="password"></div>
@@ -460,16 +460,16 @@ tr:hover td { background: rgba(0,0,0,0.015); }
           <div class="g">
             <div><label>Depot</label><select id="dep" onchange="syncDepotEntryForm()"></select></div>
             <div><label>Category</label><select id="cat" onchange="syncDepotEntryForm()"></select></div>
-            <div><label>Orders (Qty)</label><input id="o" type="number" min="0"></div>
-            <div><label>Delivered (Qty)</label><input id="v" type="number" min="0"></div>
-            <div><label>Closing Stock (Qty)</label><input id="s" type="number" min="0"></div>
-            <div><label>Avg Daily Sale</label><input id="a" type="number" min="0"></div>
+            <div><label id="lbl_o">Orders (Pkt)</label><input id="o" type="number" min="0"></div>
+            <div><label id="lbl_v">Delivered (Pkt)</label><input id="v" type="number" min="0"></div>
+            <div><label id="lbl_s">Closing Stock (Pkt)</label><input id="s" type="number" min="0"></div>
+            <div><label id="lbl_a">Avg Daily Sale (Pkt)</label><input id="a" type="number" min="0"></div>
           </div>
           <div class="btn-row">
             <button class="p" onclick="saveEntry()">Save Category Entry</button>
             <button class="sm" onclick="clearEntryForm()">Clear Form</button>
           </div>
-          <p class="sub" style="margin-top:8px;">Tip: Same depot + category save korle ager ta update hoy. Stock cover 3 diner kom hole red warning dekhay.</p>
+          <p class="sub" style="margin-top:8px;">Tip: Re-saving the same depot & category updates the record. Stock cover under 3 days triggers a red low-stock warning.</p>
         </div>
       </div>
 
@@ -564,9 +564,12 @@ tr:hover td { background: rgba(0,0,0,0.015); }
       <div class="card-header">
         <div class="card-title">⚡ Bulk Upload (from Poloxy ERP / Excel / Spreadsheets)</div>
       </div>
-      <p class="sub" style="margin-bottom:14px;">
-        আপনি Poloxy ERP বা Excel শিট থেকে ডাটা সরাসরি কপি-পেস্ট করে অথবা <b>.xlsx / .csv</b> ফাইল ড্রপ করে একবারে সব ডিপোর স্টক বা অর্ডার আপডেট করতে পারেন।
-      </p>
+      <!-- Sample Template Download Buttons -->
+      <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px;">
+        <button type="button" class="s" style="font-size:12px; padding:6px 12px;" onclick="downloadSampleTemplate('stock')">📥 Download Stock Template (.xlsx)</button>
+        <button type="button" class="s" style="font-size:12px; padding:6px 12px;" onclick="downloadSampleTemplate('orders')">📥 Download Orders & Delivery Template (.xlsx)</button>
+        <button type="button" class="s" style="font-size:12px; padding:6px 12px;" onclick="downloadSampleTemplate('full')">📥 Download Master Template (.xlsx)</button>
+      </div>
 
       <!-- Drag & Drop Zone -->
       <div class="drop-zone" id="drop-zone" onclick="$('file-input').click()">
@@ -640,16 +643,29 @@ Savar	Egg	42000	7500" oninput="parsePastedTable()"></textarea>
       <!-- DYNAMIC PRODUCT CATEGORIES MANAGEMENT -->
       <div class="card" style="margin-bottom:20px; background:var(--bg); border:1px solid var(--bd);">
         <div class="card-header">
-          <div class="card-title" style="font-size:14px;">🏷️ Product Categories (ডিপো রিপোর্টের ক্যাটাগরি তালিকা)</div>
+          <div class="card-title" style="font-size:14px;">🏷️ Product Categories (Reporting Categories)</div>
         </div>
         <p class="sub" style="margin-bottom:12px;">
-          এখানে যেকোনো নতুন প্রোডাক্ট ক্যাটাগরি (যেমন Bakery, Fish, Feed, Beef ইত্যাদি) যোগ করতে পারবেন। এটি স্বয়ংক্রিয়ভাবে সব ডিপোর এন্ট্রি ফর্ম ও হোয়াটসঅ্যাপ রিপোর্টে যুক্ত হবে।
+          Add or manage product categories (e.g. Bakery, Fish, Feed, Beef). New categories automatically update depot entry forms and WhatsApp reports.
         </p>
         <div id="cat_list_wrap" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:14px;"></div>
-        <div class="g" style="grid-template-columns: 2fr 1fr; max-width:500px;">
+        <div class="g" style="grid-template-columns: 2fr 1fr 1fr; max-width:600px;">
           <div>
             <label>New Category Name</label>
-            <input id="new_cat_name" placeholder="e.g. Bakery, Fish, Feed" onkeydown="if(event.key==='Enter')addCategory()">
+            <input id="new_cat_name" placeholder="e.g. Fish, Beef, Oil" onkeydown="if(event.key==='Enter')addCategory()">
+          </div>
+          <div>
+            <label>Unit (UoM)</label>
+            <select id="new_cat_unit">
+              <option value="Kg">Kg</option>
+              <option value="Pkt">Pkt</option>
+              <option value="Pcs">Pcs</option>
+              <option value="Ltr">Ltr</option>
+              <option value="Box">Box</option>
+              <option value="Ctn">Ctn</option>
+              <option value="Ton">Ton</option>
+              <option value="Qty">Qty</option>
+            </select>
           </div>
           <div style="display:flex; align-items:flex-end;">
             <button class="p" onclick="addCategory()">+ Add Category</button>
@@ -751,6 +767,32 @@ function setTab(tabName) {
   });
 }
 
+let categoryDetails = [];
+const PRESET_UNITS = {
+  'egg': 'Pcs',
+  'frozen': 'Pkt',
+  'chicken': 'Kg',
+  'dairy': 'Ltr',
+  'tea': 'Kg',
+  'sweets': 'Kg',
+  'others': 'Pcs'
+};
+
+function getCatUnit(catName) {
+  const c = categoryDetails.find(x => lc(x.name) === lc(catName));
+  if (c && c.unit) return c.unit;
+  return PRESET_UNITS[lc(catName)] || 'Qty';
+}
+
+function updateEntryFormUnits() {
+  const cat = $('cat').value;
+  const u = getCatUnit(cat);
+  if ($('lbl_o')) $('lbl_o').textContent = `Orders (${u})`;
+  if ($('lbl_v')) $('lbl_v').textContent = `Delivered (${u})`;
+  if ($('lbl_s')) $('lbl_s').textContent = `Closing Stock (${u})`;
+  if ($('lbl_a')) $('lbl_a').textContent = `Avg Daily Sale (${u})`;
+}
+
 // Category Management Functions
 async function loadCategories() {
   try {
@@ -758,10 +800,12 @@ async function loadCategories() {
     if (res.categories && res.categories.length) {
       CATS = res.categories;
     }
+    categoryDetails = res.details || [];
+
     // Update Category Dropdown in Daily Entry
     const catSel = $('cat');
     const curCat = catSel.value;
-    catSel.innerHTML = CATS.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('');
+    catSel.innerHTML = CATS.map(c => `<option value="${esc(c)}">${esc(c)} (${getCatUnit(c)})</option>`).join('');
     if (CATS.includes(curCat)) catSel.value = curCat;
 
     // Render Category Tags in Admin Panel
@@ -769,11 +813,12 @@ async function loadCategories() {
     if (wrap) {
       wrap.innerHTML = CATS.map(c => `
         <span class="cat-tag">
-          ${esc(c)}
+          <b>${esc(c)}</b> <span class="sub" style="font-size:11px;">(${getCatUnit(c)})</span>
           <span class="cat-tag-del" title="Delete category" onclick="delCategory('${esc(c)}')">×</span>
         </span>
       `).join('');
     }
+    updateEntryFormUnits();
   } catch (e) {
     console.error('Category load error:', e);
   }
@@ -781,12 +826,14 @@ async function loadCategories() {
 
 async function addCategory() {
   const inp = $('new_cat_name');
+  const unitSel = $('new_cat_unit');
   const name = inp.value.trim();
+  const unit = unitSel ? unitSel.value : 'Qty';
   if (!name) return msg('Please enter a category name');
   try {
-    await api('POST', '/api/categories', { name });
+    await api('POST', '/api/categories', { name, unit });
     inp.value = '';
-    msg(`Category "${name}" added successfully ✓`, true);
+    msg(`Category "${name}" (${unit}) added successfully ✓`, true);
     await loadCategories();
     renderAll();
   } catch (e) {
@@ -922,6 +969,7 @@ function syncDepotEntryForm() {
     $('v_done').value = 0;
     $('v_notes').value = '';
   }
+  updateEntryFormUnits();
 }
 
 function autoCalcOnRoad() {
@@ -982,7 +1030,7 @@ function renderAll() {
   const allKnownDepots = deps.length ? deps : [...new Set(ents.map(r => r.depot))];
   const subCount = allKnownDepots.filter(d => submittedDepots.has(lc(d))).length;
   $('kpi-depots').textContent = `${subCount} / ${allKnownDepots.length}`;
-  $('kpi-depots-status').textContent = subCount === allKnownDepots.length && allKnownDepots.length > 0 ? 'All submitted ✓' : `${allKnownDepots.length - subCount} pending`;
+  $('kpi-depots-status').textContent = subCount === allKnownDepots.length && allKnownDepots.length > 0 ? 'All depots submitted ✓' : `${allKnownDepots.length - subCount} pending`;
 
   // 2. Summary Category Table
   $('tt').innerHTML = CATS.map(c => {
@@ -990,7 +1038,7 @@ function renderAll() {
     const cov = x.a > 0 ? (x.s / x.a).toFixed(1) : '–';
     const covClass = x.a > 0 && (x.s / x.a) < 3 ? 'cover-bad' : 'cover-ok';
     return `<tr>
-      <td><b>${esc(c)}</b></td>
+      <td><b>${esc(c)}</b> <span class="sub" style="font-size:11px;">(${getCatUnit(c)})</span></td>
       <td class="num">${fmt(x.o)}</td>
       <td class="num">${fmt(x.v)}</td>
       <td class="num" style="color:var(--warn)">${fmt(x.o - x.v)}</td>
@@ -1005,9 +1053,10 @@ function renderAll() {
     const canEdit = allowed().some(d => lc(d) === lc(r.depot));
     const cov = r.avg_daily > 0 ? (r.stock / r.avg_daily).toFixed(1) : '–';
     const covClass = r.avg_daily > 0 && (r.stock / r.avg_daily) < 3 ? 'cover-bad' : 'cover-ok';
+    const u = getCatUnit(r.category);
     return `<tr>
       <td><b>${esc(r.depot)}</b></td>
-      <td>${esc(r.category)}</td>
+      <td>${esc(r.category)} <span class="sub" style="font-size:11px;">(${u})</span></td>
       <td class="num">${fmt(r.orders)}</td>
       <td class="num">${fmt(r.delivered)}</td>
       <td class="num" style="color:var(--warn)">${fmt(r.orders - r.delivered)}</td>
@@ -1190,7 +1239,8 @@ function genReport() {
 
   CATS.forEach(c => {
     const x = catTotals[c] || { o: 0, v: 0, s: 0, a: 0 };
-    L.push(`- ${c}: Orders ${fmt(x.o)} | Delivered ${fmt(x.v)} | Pending ${fmt(x.o - x.v)}`);
+    const u = getCatUnit(c);
+    L.push(`- ${c}: Orders ${fmt(x.o)} ${u} | Delivered ${fmt(x.v)} ${u} | Pending ${fmt(x.o - x.v)} ${u}`);
   });
 
   L.push(`- Total vehicle on road: ${totVehiclesOnRoad}`);
@@ -1235,6 +1285,47 @@ function copyReport() {
 // ========================================================
 // BULK UPLOAD ENGINE (SheetJS + Text Tab Parser)
 // ========================================================
+function downloadSampleTemplate(type) {
+  if (typeof XLSX === 'undefined') {
+    msg('Excel library is still loading, please try again in 2 seconds.');
+    return;
+  }
+  const sampleDepots = (deps && deps.length) ? deps.slice(0, 4) : ['Dhaka', 'Gazipur', 'Savar', 'Chittagong'];
+  const sampleCats = (CATS && CATS.length) ? CATS.slice(0, 4) : ['Frozen', 'Chicken', 'Egg', 'Dairy'];
+  let data = [];
+  let filename = 'Sample_Template.xlsx';
+
+  if (type === 'stock') {
+    filename = 'Poloxy_Stock_Template.xlsx';
+    data = [
+      { 'Depot': sampleDepots[0] || 'Dhaka', 'Category': sampleCats[0] || 'Frozen', 'Stock': 12000, 'Avg_Daily': 2500 },
+      { 'Depot': sampleDepots[1] || 'Gazipur', 'Category': sampleCats[1] || 'Chicken', 'Stock': 8500, 'Avg_Daily': 1400 },
+      { 'Depot': sampleDepots[2] || 'Savar', 'Category': sampleCats[2] || 'Egg', 'Stock': 42000, 'Avg_Daily': 7000 },
+      { 'Depot': sampleDepots[3] || 'Chittagong', 'Category': sampleCats[3] || 'Dairy', 'Stock': 6000, 'Avg_Daily': 950 }
+    ];
+  } else if (type === 'orders') {
+    filename = 'Orders_Delivery_Template.xlsx';
+    data = [
+      { 'Depot': sampleDepots[0] || 'Dhaka', 'Category': sampleCats[0] || 'Frozen', 'Orders': 150, 'Delivered': 142 },
+      { 'Depot': sampleDepots[1] || 'Gazipur', 'Category': sampleCats[1] || 'Chicken', 'Orders': 90, 'Delivered': 85 },
+      { 'Depot': sampleDepots[2] || 'Savar', 'Category': sampleCats[2] || 'Egg', 'Orders': 60, 'Delivered': 58 },
+      { 'Depot': sampleDepots[3] || 'Chittagong', 'Category': sampleCats[3] || 'Dairy', 'Orders': 40, 'Delivered': 38 }
+    ];
+  } else {
+    filename = 'Master_Daily_Template.xlsx';
+    data = [
+      { 'Depot': sampleDepots[0] || 'Dhaka', 'Category': sampleCats[0] || 'Frozen', 'Orders': 150, 'Delivered': 142, 'Stock': 12000, 'Avg_Daily': 2500 },
+      { 'Depot': sampleDepots[1] || 'Gazipur', 'Category': sampleCats[1] || 'Chicken', 'Orders': 90, 'Delivered': 85, 'Stock': 8500, 'Avg_Daily': 1400 }
+    ];
+  }
+
+  const ws = XLSX.utils.json_to_sheet(data);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Data");
+  XLSX.writeFile(wb, filename);
+  msg(`Downloaded template: ${filename} ✓`, true);
+}
+
 function handleFileSelect(evt) {
   const file = evt.target.files[0];
   if (!file) return;
@@ -1246,7 +1337,39 @@ function handleFileSelect(evt) {
       const workbook = XLSX.read(data, { type: 'array' });
       const firstSheetName = workbook.SheetNames[0];
       const worksheet = workbook.Sheets[firstSheetName];
-      const jsonRows = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
+      
+      // Auto-detect header row (skips company titles or empty lines at top of ERP exports)
+      const rawMatrix = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
+      if (!rawMatrix || !rawMatrix.length) {
+        msg('Uploaded file has no data');
+        return;
+      }
+
+      let headerRowIdx = 0;
+      for (let i = 0; i < Math.min(rawMatrix.length, 12); i++) {
+        const rowStr = (rawMatrix[i] || []).map(c => String(c).toLowerCase()).join(' ');
+        if (
+          rowStr.includes('depot') || rowStr.includes('warehouse') || rowStr.includes('location') ||
+          rowStr.includes('branch') || rowStr.includes('stock') || rowStr.includes('order') ||
+          rowStr.includes('category') || rowStr.includes('ডিপো') || rowStr.includes('স্টক')
+        ) {
+          headerRowIdx = i;
+          break;
+        }
+      }
+
+      const headerParts = rawMatrix[headerRowIdx].map(c => String(c).trim());
+      const jsonRows = [];
+      for (let i = headerRowIdx + 1; i < rawMatrix.length; i++) {
+        const r = rawMatrix[i];
+        if (!r || !r.some(cell => String(cell).trim() !== '')) continue;
+        const obj = {};
+        headerParts.forEach((h, idx) => {
+          if (h) obj[h] = r[idx] !== undefined ? r[idx] : '';
+        });
+        jsonRows.push(obj);
+      }
+
       processParsedJsonRows(jsonRows);
     } catch (err) {
       msg('Excel read error: ' + err.message);
@@ -1282,10 +1405,21 @@ function parsePastedTable() {
   const lines = text.split(/\r?\n/).filter(Boolean);
   if (lines.length < 2) return;
 
-  const headerParts = lines[0].split('\t').map(x => x.trim().toLowerCase());
+  // Auto detect header line if top line has title or blank
+  let headerIdx = 0;
+  for (let i = 0; i < Math.min(lines.length, 5); i++) {
+    const l = lines[i].toLowerCase();
+    if (l.includes('depot') || l.includes('stock') || l.includes('order') || l.includes('cat') || l.includes('branch') || l.includes('ডিপো')) {
+      headerIdx = i;
+      break;
+    }
+  }
+
+  const headerParts = lines[headerIdx].split('\t').map(x => x.trim().toLowerCase());
   const rows = [];
-  for (let i = 1; i < lines.length; i++) {
+  for (let i = headerIdx + 1; i < lines.length; i++) {
     const cells = lines[i].split('\t');
+    if (!cells.some(c => c && c.trim())) continue;
     const obj = {};
     headerParts.forEach((h, idx) => { obj[h] = cells[idx] ? cells[idx].trim() : ''; });
     rows.push(obj);
@@ -1293,12 +1427,16 @@ function parsePastedTable() {
   processParsedJsonRows(rows);
 }
 
-// Smart Column Matcher
+// Smart Column Matcher (Unicode / Bengali + Symbol-tolerant)
 function detectField(obj, candidates) {
   const keys = Object.keys(obj);
   for (const c of candidates) {
-    const foundKey = keys.find(k => k.toLowerCase().replace(/[^a-z0-9]/g, '').includes(c));
-    if (foundKey) return obj[foundKey];
+    const target = c.toLowerCase().trim().replace(/[\s_\-\.\/\\]/g, '');
+    const foundKey = keys.find(k => {
+      const cleanK = String(k).toLowerCase().replace(/[\s_\-\.\/\\]/g, '');
+      return cleanK.includes(target);
+    });
+    if (foundKey && obj[foundKey] !== undefined && obj[foundKey] !== '') return obj[foundKey];
   }
   return null;
 }
@@ -1308,19 +1446,19 @@ function processParsedJsonRows(rows) {
   const knownDepots = deps.length ? deps : allowed();
 
   rows.forEach((r, idx) => {
-    // 1. Detect Depot
-    const rawDepot = detectField(r, ['depot', 'location', 'warehouse', 'branch', 'ডিপো']);
+    // 1. Detect Depot (Broad ERP synonyms)
+    const rawDepot = detectField(r, ['depot', 'depotname', 'location', 'warehouse', 'branch', 'plant', 'site', 'ডিপো']);
     const matchedDepot = knownDepots.find(d => lc(d) === lc(rawDepot)) || rawDepot;
 
     // 2. Detect Category
-    const rawCat = detectField(r, ['category', 'cat', 'group', 'productgroup', 'itemgroup', 'ক্যাটাগরি']);
+    const rawCat = detectField(r, ['category', 'cat', 'group', 'productgroup', 'itemgroup', 'prodcat', 'itemcat', 'itemgroupname', 'ক্যাটাগরি']);
     const matchedCat = CATS.find(c => lc(c) === lc(rawCat)) || (rawCat ? 'Others' : null);
 
-    // 3. Detect Numbers
-    const rawOrders = detectField(r, ['order', 'orders', 'orderqty', 'অর্ডার']);
-    const rawDelivered = detectField(r, ['delivered', 'delivery', 'challan', 'challanqty', 'ডেলিভারি']);
-    const rawStock = detectField(r, ['stock', 'closingstock', 'balance', 'qty', 'স্টক']);
-    const rawAvg = detectField(r, ['avgdaily', 'avgsale', 'dailysale', 'avg', 'runrate', 'গড়']);
+    // 3. Detect Numbers (Sales Orders, Delivery, Stock, Avg Daily)
+    const rawOrders = detectField(r, ['order', 'orders', 'orderqty', 'booking', 'salesorder', 'reqqty', 'soqty', 'ordered', 'অর্ডার']);
+    const rawDelivered = detectField(r, ['delivered', 'delivery', 'challan', 'challanqty', 'dispatch', 'dispatched', 'invoiceqty', 'invqty', 'delqty', 'ডেলিভারি']);
+    const rawStock = detectField(r, ['stock', 'closingstock', 'currentstock', 'balance', 'closingbalance', 'stkqty', 'onhand', 'physicalstock', 'available', 'availablestock', 'স্টক']);
+    const rawAvg = detectField(r, ['avgdaily', 'avgsale', 'dailysale', 'avg', 'runrate', 'ads', 'avgrunrate', 'averagesale', 'গড়']);
 
     if (matchedDepot) {
       parsedBulkRows.push({
@@ -1429,11 +1567,11 @@ async function loadResets() {
     $('rq').innerHTML = r.length ? r.map(q => `
       <div style="padding:8px; background:var(--bg); border-radius:6px; margin:4px 0; display:flex; justify-content:space-between; align-items:center;">
         <div>
-          ${q.mobile_match ? '✅ Mobile matched' : '⚠️ Mobile mismatch'} · <b>${esc(q.username)}</b> (${esc(q.name)}) · Sent Mobile: ${esc(q.submitted)}
+          ${q.mobile_match ? '✅ Mobile verified' : '⚠️ Mobile mismatch'} · <b>${esc(q.username)}</b> (${esc(q.name)}) · Submitted Mobile: ${esc(q.submitted)}
         </div>
         <button class="sm" onclick="dismissReset(${q.id})">Dismiss</button>
       </div>
-    `).join('') : 'No pending reset requests.';
+    `).join('') : 'No pending password reset requests.';
   } catch (e) {}
 }
 
@@ -1472,16 +1610,19 @@ async function delUser(idx) {
 }
 
 async function addUser() {
+  const u = ($('nu').value || '').trim();
+  const n = ($('nn').value || '').trim();
+  const g = ($('ng').value || '').trim();
+  const m = ($('nm').value || '').trim();
+  const r = $('nr').value;
+  const d = ($('nd').value || '').trim();
+  const p = ($('np').value || '').trim();
+
+  if (!u) return msg('Please enter a User ID');
+  if (!p || p.length < 8) return msg('Password must be at least 8 characters long');
+
   try {
-    await api('POST', '/api/users', {
-      username: $('nu').value,
-      name: $('nn').value,
-      designation: $('ng').value,
-      mobile: $('nm').value,
-      role: $('nr').value,
-      depots: $('nd').value,
-      password: $('np').value
-    });
+    await api('POST', '/api/users', { username: u, name: n, designation: g, mobile: m, role: r, depots: d, password: p });
     ['nu', 'nn', 'ng', 'nm', 'nd', 'np'].forEach(id => $(id).value = '');
     msg('User created successfully ✓', true);
     loadUsers();
@@ -1491,12 +1632,25 @@ async function addUser() {
 
 // Auth Handlers
 async function doLogin() {
+  const u = ($('lu').value || '').trim();
+  const p = ($('lp').value || '').trim();
   $('le').textContent = '';
+  if (!u || !p) {
+    $('le').textContent = 'Please enter both User ID and Password.';
+    return;
+  }
+  const btn = document.querySelector('#login button.p');
+  const oldText = btn ? btn.textContent : 'Sign In';
+  if (btn) { btn.textContent = 'Signing in...'; btn.disabled = true; }
   try {
-    await api('POST', '/api/login', { username: $('lu').value, password: $('lp').value });
+    await api('POST', '/api/login', { username: u, password: p });
     $('lp').value = '';
     await boot();
-  } catch (e) { $('le').textContent = e.message; }
+  } catch (e) {
+    $('le').textContent = e.message || 'Invalid username or password.';
+  } finally {
+    if (btn) { btn.textContent = oldText; btn.disabled = false; }
+  }
 }
 
 async function doLogout() {
@@ -1530,7 +1684,7 @@ async function doForgot() {
   try {
     await api('POST', '/api/forgot', { username: $('fu').value, mobile: $('fm').value });
     el.className = 'ok';
-    el.textContent = 'Request submitted. Admin will verify and reset.';
+    el.textContent = 'Password reset request submitted. Admin will verify and reset.';
   } catch (e) {
     el.className = 'bad';
     el.textContent = e.message;
