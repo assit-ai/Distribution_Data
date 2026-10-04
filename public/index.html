@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Distribution Daily Update</title>
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--tx:#1b1f24;--mut:#667085;--bd:#dfe3e8;--ac:#0b6e4f;--acx:#fff;--bad:#b42318;--ok:#067647;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root{--bg:#111418;--card:#1a1f26;--tx:#e8eaed;--mut:#9aa4b2;--bd:#2c333d;--ac:#3ddc97;--acx:#0b1f17;--bad:#ff8a80;--ok:#5be0a5}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+.w{max-width:980px;margin:0 auto;padding:16px}.nar{max-width:380px;margin-top:10vh}
+h1{font-size:20px;margin:0}h2{font-size:16px;margin:0 0 10px}
+.top{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap}
+.sub{color:var(--mut);font-size:13px}
+.c{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:14px;margin-bottom:14px}
+.g{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}
+label{display:block;font-size:12px;color:var(--mut);margin-bottom:3px}
+input,select,textarea{width:100%;padding:8px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx);font:inherit}
+textarea{min-height:80px}
+.ov{overflow-x:auto}
+table{border-collapse:collapse;width:100%;min-width:640px}
+th{font-size:12px;color:var(--mut);text-align:left;padding:6px;font-weight:600;border-bottom:1px solid var(--bd)}
+td{padding:6px;border-bottom:1px solid var(--bd)}
+.n{text-align:right}.cv{font-weight:700;text-align:center}
+.bad{color:var(--bad)}.ok{color:var(--ok)}
+button{border:1px solid var(--bd);background:var(--card);color:var(--tx);padding:8px 12px;border-radius:8px;font:inherit;cursor:pointer}
+button.p{background:var(--ac);color:var(--acx);border-color:var(--ac);font-weight:600}
+.r{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.note{font-size:13px;color:var(--mut);background:var(--bg);border-radius:8px;padding:10px;margin-top:10px}
+#msg{display:none;border:1px solid var(--bad);color:var(--bad);border-radius:8px;padding:10px;margin-bottom:14px}
+#msg.okm{border-color:var(--ok);color:var(--ok)}
+#out{min-height:260px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px}
+.hid{display:none!important}
+</style></head><body>
+
+<div id="login" class="w nar hid"><div class="c">
+<h1 style="margin-bottom:12px">Distribution Daily Update</h1>
+<label>Username</label><input id="lu" autocomplete="username" autocapitalize="none">
+<label style="margin-top:10px">Password</label><input id="lp" type="password" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
+<div class="r"><button class="p" onclick="doLogin()">Login</button></div>
+<div id="le" class="bad" style="margin-top:10px;font-size:13px"></div>
+<div style="margin-top:12px"><a href="#" onclick="$('fg').classList.toggle('hid');return false" style="font-size:13px;color:var(--ac)">Password bhule gechen?</a></div>
+<div id="fg" class="hid note"><label>Apnar ID</label><input id="fu" autocapitalize="none">
+<label style="margin-top:8px">Registered mobile number</label><input id="fm" type="tel">
+<div class="r"><button onclick="doForgot()">Request pathan</button></div>
+<div id="fe" style="margin-top:8px;font-size:13px"></div>
+<div style="margin-top:6px">Request admin er kache jabe. Admin verify kore notun password dibe.</div></div></div></div>
+
+<div id="app" class="w hid">
+<div class="top"><div><h1>Distribution Daily Update</h1><div class="sub" id="who"></div></div><div class="r" style="margin:0"><button onclick="showPw(true)">Password change</button><button onclick="doLogout()">Logout</button></div></div>
+<div id="msg"></div>
+<div id="pw" class="c hid"><h2>Password change</h2><div id="pwn" class="note hid" style="margin:0 0 10px">Prothom login, tai apnar nijer notun password set korun.</div>
+<div class="g"><div><label>Ager password</label><input id="pc" type="password" autocomplete="current-password"></div>
+<div><label>Notun password (min 8)</label><input id="pn" type="password" autocomplete="new-password"></div></div>
+<div class="r"><button class="p" onclick="savePw()">Save password</button><button id="pwx" onclick="showPw(false)">Cancel</button></div></div>
+<div id="main">
+
+<div class="c"><div class="g"><div><label>Date</label><input id="date" type="date" onchange="load()"></div></div></div>
+
+<div class="c"><h2>Depot data din</h2>
+<div id="nod" class="note hid"></div>
+<div id="ef"><div class="g">
+<div><label>Depot</label><select id="dep"></select></div>
+<div><label>Category</label><select id="cat"><option>Frozen</option><option>Chicken</option><option>Egg</option><option>Dairy</option><option>Others</option></select></div>
+<div><label>Orders</label><input id="o" type="number" min="0"></div>
+<div><label>Delivered</label><input id="v" type="number" min="0"></div>
+<div><label>Stock (qty)</label><input id="s" type="number" min="0"></div>
+<div><label>Avg daily sale</label><input id="a" type="number" min="0"></div>
+</div>
+<div class="r"><button class="p" onclick="saveE()">Save entry</button></div>
+<div class="note">Same depot + category abar save korle update hoy. <b>Stock cover</b> = Stock ÷ Avg daily sale (koyday cholbe). 3 diner kom hole <span class="bad">red</span>.</div></div></div>
+
+<div class="c"><h2>Data submission status</h2><div id="ss"></div></div>
+
+<div class="c"><h2>Entries</h2>
+<div class="ov"><table><thead><tr><th>Depot</th><th>Category</th><th class="n">Orders</th><th class="n">Delivered</th><th class="n">Pending</th><th class="n">Stock</th><th class="n">Avg/day</th><th>Cover (days)</th><th>By</th><th></th></tr></thead><tbody id="tb"></tbody></table></div>
+<h2 style="margin-top:16px">Category total</h2>
+<div class="ov"><table><thead><tr><th>Category</th><th class="n">Orders</th><th class="n">Delivered</th><th class="n">Pending</th><th class="n">Stock</th><th>Cover (days)</th></tr></thead><tbody id="tt"></tbody></table></div></div>
+
+<div class="c"><h2>GT Frozen Sales &amp; Issues <span class="sub" id="rn"></span></h2>
+<div class="g">
+<div><label>Cluster Head</label><input id="head" class="rf"></div>
+<div><label>Today sales</label><input id="st" type="number" class="rf"></div>
+<div><label>Today target</label><input id="stt" type="number" class="rf"></div>
+<div><label>MTD sales</label><input id="sm" type="number" class="rf"></div>
+<div><label>MTD target</label><input id="smt" type="number" class="rf"></div></div>
+<label style="margin-top:12px">Key Issue / Challenges (prottek line e ekta)</label><textarea id="iss" class="rf" placeholder="Issue → Action | Support needed"></textarea>
+<div class="r adm"><button class="p" onclick="saveR()">Save sales &amp; issues</button></div></div>
+
+<div class="c"><h2>WhatsApp Report</h2>
+<div class="r" style="margin:0 0 10px"><button class="p" onclick="gen()">Generate report</button><button onclick="cp()" id="cpb">Copy</button></div>
+<textarea id="out" readonly></textarea></div>
+
+<div class="c adm" id="uc"><h2>Admin: Users &amp; depot assignment</h2>
+<h2>Password reset request <span class="sub" id="rqn"></span></h2><div id="rq" class="sub" style="margin-bottom:14px">Kono request nai.</div>
+<div class="ov"><table><thead><tr><th>ID</th><th>Name</th><th>Designation</th><th>Mobile</th><th>Role</th><th>Depot (comma diye)</th><th>Reset password</th><th></th></tr></thead><tbody id="ub"></tbody></table></div>
+<h2 style="margin-top:16px">Notun user</h2>
+<div class="g">
+<div><label>ID (Username)</label><input id="nu" autocapitalize="none"></div>
+<div><label>Name</label><input id="nn"></div>
+<div><label>Designation</label><input id="ng"></div>
+<div><label>Mobile</label><input id="nm" type="tel"></div>
+<div><label>Role</label><select id="nr"><option value="depot">Depot user</option><option value="admin">Admin</option></select></div>
+<div><label>Depot (comma diye)</label><input id="nd" placeholder="Dhaka, Gazipur"></div>
+<div><label>Password (min 8)</label><input id="np" type="text"></div></div>
+<div class="r"><button class="p" onclick="addU()">Add user</button></div></div>
+</div></div>
+
+<script>
+var CATS=['Frozen','Chicken','Egg','Dairy','Others'],me=null,deps=[],ents=[],users=[];
+var $=function(i){return document.getElementById(i)};
+function num(x){return parseFloat(x)||0}
+function fmt(x){return Math.round(x).toLocaleString('en-US')}
+function pct(a,b){return b>0?Math.round(a/b*100):0}
+function lc(s){return String(s).trim().toLowerCase()}
+function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
+function cvh(s,a){if(!(a>0))return '–';var c=s/a;return '<span class="'+(c<3?'bad':'ok')+'">'+c.toFixed(1)+'</span>'}
+function dstr(v){var d=new Date(v+'T00:00:00');return isNaN(d)?v:d.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})}
+function msg(t,ok){var m=$('msg');m.textContent=t;m.className=ok?'okm':'';m.style.display='block';clearTimeout(msg.t);msg.t=setTimeout(function(){m.style.display='none'},ok?2500:6000)}
+async function api(m,u,b){
+ var o={method:m,credentials:'same-origin',headers:{}};
+ if(m!=='GET'&&m!=='DELETE'){o.headers['Content-Type']='application/json';o.body=JSON.stringify(b||{})}
+ var r=await fetch(u,o),j={};try{j=await r.json()}catch(e){}
+ if(r.status===401&&me){location.reload();return}
+ if(!r.ok)throw new Error(j.error||('Error '+r.status));return j}
+function allowed(){return me.role==='admin'?deps:me.depots}
+async function boot(){
+ try{me=await api('GET','/api/me')}catch(e){me=null;$('login').classList.remove('hid');return}
+ $('login').classList.add('hid');$('app').classList.remove('hid');
+ $('who').textContent=(me.name||me.username)+(me.designation?' · '+me.designation:'')+' · '+(me.role==='admin'?'Admin':'Depot user')+' · ID '+me.username;
+ var ad=me.role==='admin';document.querySelectorAll('.adm').forEach(function(e){e.classList.toggle('hid',!ad)});
+ document.querySelectorAll('.rf').forEach(function(e){e.disabled=!ad});
+ $('rn').textContent=ad?'':'(shudhu admin edit korte pare)';
+ $('date').value=new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10);
+ if(me.must_change){showPw(true,true);return}
+ await enter();
+ setInterval(function(){if(!document.hidden&&me&&!me.must_change)load(true)},30000);
+}
+async function enter(){await load();if(me.role==='admin')loadUsers()}
+function showPw(on,forced){$('pw').classList.toggle('hid',!on);$('main').classList.toggle('hid',!!forced&&on);$('pwn').classList.toggle('hid',!forced);$('pwx').classList.toggle('hid',!!forced);if(on)$('pc').focus()}
+async function savePw(){
+ try{await api('POST','/api/password',{current:$('pc').value,password:$('pn').value});var f=me.must_change;me.must_change=false;$('pc').value='';$('pn').value='';showPw(false);msg('Password change hoyeche ✓',true);if(f){await enter();setInterval(function(){if(!document.hidden)load(true)},30000)}}catch(e){msg(e.message)}}
+async function doForgot(){
+ var e=$('fe');e.className='';e.textContent='';
+ try{await api('POST','/api/forgot',{username:$('fu').value,mobile:$('fm').value});e.className='ok';e.textContent='Request pathano hoyeche. Admin apnar sathe jogajog korbe.'}catch(x){e.className='bad';e.textContent=x.message}}
+async function doLogin(){
+ $('le').textContent='';
+ try{await api('POST','/api/login',{username:$('lu').value,password:$('lp').value});$('lp').value='';await boot()}catch(e){$('le').textContent=e.message}}
+async function doLogout(){try{await api('POST','/api/logout',{})}catch(e){}location.reload()}
+async function load(quiet){
+ var d=$('date').value;if(!d)return;
+ try{
+  var x=await Promise.all([api('GET','/api/entries?date='+d),api('GET','/api/report?date='+d),api('GET','/api/depots')]);
+  ents=x[0].entries;deps=x[2].depots;
+  {var r=x[1].report,m={head:r.head,st:r.today_sales,stt:r.today_target,sm:r.mtd_sales,smt:r.mtd_target,iss:r.issues};
+   Object.keys(m).forEach(function(k){var el=$(k);if(document.activeElement!==el)el.value=(m[k]===0||m[k]==null)?'':m[k]})}
+  mine();render();
+ }catch(e){if(!quiet)msg(e.message)}}
+function mine(){
+ var a=allowed(),sel=$('dep'),cur=sel.value;
+ sel.innerHTML=a.map(function(x){return '<option>'+esc(x)+'</option>'}).join('');if(a.indexOf(cur)>=0)sel.value=cur;
+ var nd=$('nod');
+ if(!a.length){nd.classList.remove('hid');$('ef').classList.add('hid');nd.textContent=me.role==='admin'?'Age niche theke user toiri kore depot assign korun.':'Apnake ekhono kono depot assign kora hoyni. Admin ke bolun.'}
+ else{nd.classList.add('hid');$('ef').classList.remove('hid')}}
+async function saveE(){
+ try{await api('PUT','/api/entries',{date:$('date').value,depot:$('dep').value,category:$('cat').value,orders:$('o').value||0,delivered:$('v').value||0,stock:$('s').value||0,avg_daily:$('a').value||0});
+  ['o','v','s','a'].forEach(function(f){$(f).value=''});msg('Saved ✓',true);load()}catch(e){msg(e.message)}}
+function canMod(r){return allowed().some(function(d){return lc(d)===lc(r.depot)})}
+function edit(i){var r=ents[i];$('dep').value=r.depot;$('cat').value=r.category;$('o').value=r.orders;$('v').value=r.delivered;$('s').value=r.stock;$('a').value=r.avg_daily;window.scrollTo(0,0)}
+async function del(i){var r=ents[i];if(!confirm('Delete korben?'))return;
+ try{await api('DELETE','/api/entries?date='+encodeURIComponent(r.date)+'&depot='+encodeURIComponent(r.depot)+'&category='+encodeURIComponent(r.category));load()}catch(e){msg(e.message)}}
+async function saveR(){
+ try{await api('PUT','/api/report',{date:$('date').value,head:$('head').value,today_sales:$('st').value||0,today_target:$('stt').value||0,mtd_sales:$('sm').value||0,mtd_target:$('smt').value||0,issues:$('iss').value});msg('Saved ✓',true)}catch(e){msg(e.message)}}
+function tot(){var t={};CATS.forEach(function(c){t[c]={o:0,v:0,s:0,a:0,n:0}});ents.forEach(function(r){var x=t[r.category]||t.Others;x.n++;x.o+=r.orders;x.v+=r.delivered;x.s+=r.stock;x.a+=r.avg_daily});return t}
+function render(){
+ $('tb').innerHTML=ents.length?ents.map(function(r,i){var m=canMod(r);return '<tr><td>'+esc(r.depot)+'</td><td>'+esc(r.category)+'</td><td class="n">'+fmt(r.orders)+'</td><td class="n">'+fmt(r.delivered)+'</td><td class="n">'+fmt(r.orders-r.delivered)+'</td><td class="n">'+fmt(r.stock)+'</td><td class="n">'+fmt(r.avg_daily)+'</td><td class="cv">'+cvh(r.stock,r.avg_daily)+'</td><td class="sub">'+esc(r.by||'')+'</td><td>'+(m?'<button onclick="edit('+i+')">Edit</button> <button onclick="del('+i+')">×</button>':'')+'</td></tr>'}).join(''):'<tr><td colspan="10" class="sub">Ei date e ekhono kono entry nai.</td></tr>';
+ var t=tot();$('tt').innerHTML=CATS.filter(function(c){return t[c].n}).map(function(c){var x=t[c];return '<tr><td>'+c+'</td><td class="n">'+fmt(x.o)+'</td><td class="n">'+fmt(x.v)+'</td><td class="n">'+fmt(x.o-x.v)+'</td><td class="n">'+fmt(x.s)+'</td><td class="cv">'+cvh(x.s,x.a)+'</td></tr>'}).join('');
+ var by={},miss=0;ents.forEach(function(r){var k=lc(r.depot);(by[k]=by[k]||[]).push(r.category)});
+ $('ss').innerHTML=deps.length?deps.map(function(d){var c=by[lc(d)];if(!c)miss++;return '<div>'+(c?'✅ ':'❌ ')+esc(d)+' <span class="sub">'+(c?esc(c.join(', ')):'data dey nai')+'</span></div>'}).join('')+'<div class="note">'+(miss?miss+' ti depot er data baki.':'Sob depot data diyeche ✓')+'</div>':'<span class="sub">Ekhono kono depot assign kora nai.</span>';
+}
+function gen(){
+ var t=tot(),L=['*Cluster Manager Daily Update*','','*Cluster Head:* '+$('head').value,'*Date:* '+dstr($('date').value),'','*Key Points:*','📈 *GT Frozen Sales*',
+ '• Today: '+fmt(num($('st').value))+' (Target '+fmt(num($('stt').value))+' | Ach '+pct(num($('st').value),num($('stt').value))+'%)',
+ '• MTD: '+fmt(num($('sm').value))+' (Target '+fmt(num($('smt').value))+' | Ach '+pct(num($('sm').value),num($('smt').value))+'%)','','🚚 *Distribution (Category-wise)*'];
+ CATS.forEach(function(c){var x=t[c];if(x.n){var cv=x.a>0?(x.s/x.a).toFixed(1)+' days':'–';L.push('• '+c+': Orders '+fmt(x.o)+' | Delivered '+fmt(x.v)+' | Pending '+fmt(x.o-x.v)+' | Stock cover '+cv)}});
+ L.push('','*Key Issue/ Challenges:*');
+ var is=$('iss').value.split('\n').map(function(x){return x.trim()}).filter(Boolean);
+ if(!is.length)L.push('1. None');else is.forEach(function(x,i){L.push((i+1)+'. '+x)});
+ $('out').value=L.join('\n');
+}
+function cp(){var t=$('out');if(!t.value)gen();t.select();var ok=false;try{ok=navigator.clipboard?(navigator.clipboard.writeText(t.value),true):document.execCommand('copy')}catch(e){try{ok=document.execCommand('copy')}catch(x){}}
+ $('cpb').textContent=ok?'Copied ✓':'Select & copy manually';setTimeout(function(){$('cpb').textContent='Copy'},2000)}
+// ----- admin users -----
+async function loadUsers(){
+ try{users=(await api('GET','/api/users')).users}catch(e){return msg(e.message)}
+ $('ub').innerHTML=users.map(function(u,i){return '<tr><td>'+esc(u.username)+'</td><td><input id="un'+i+'" value="'+esc(u.name)+'"></td><td><input id="ug'+i+'" value="'+esc(u.designation)+'"></td><td><input id="um'+i+'" type="tel" value="'+esc(u.mobile)+'"></td>'+
+  '<td><select id="ur'+i+'"><option value="depot"'+(u.role==='depot'?' selected':'')+'>Depot</option><option value="admin"'+(u.role==='admin'?' selected':'')+'>Admin</option></select></td>'+
+  '<td><input id="ud'+i+'" value="'+esc((u.depots||[]).join(', '))+'"></td><td><input id="up'+i+'" placeholder="notun password"></td>'+
+  '<td><button onclick="saveU('+i+')">Save</button> '+(u.id===me.id?'':'<button onclick="delU('+i+')">×</button>')+'</td></tr>'}).join('');loadResets()}
+async function loadResets(){
+ try{var r=(await api('GET','/api/resets')).resets;$('rqn').textContent=r.length?'('+r.length+' pending)':'';
+  $('rq').innerHTML=r.length?r.map(function(q){return '<div style="margin:4px 0">'+(q.mobile_match?'✅ Mobile mile geche':'⚠️ Mobile mile ni')+' · <b>'+esc(q.username)+'</b> ('+esc(q.name)+') · dewa mobile: '+esc(q.submitted)+' · <button onclick="dismissR('+q.id+')">Dismiss</button></div>'}).join('')+'<div class="note">Mobile e verify kore, niche user er "Reset password" ghore notun password diye Save korun. Save korle request nijei muche jabe.</div>':'Kono request nai.'}catch(e){}}
+async function dismissR(id){try{await api('DELETE','/api/resets/'+id);loadResets()}catch(e){msg(e.message)}}
+async function saveU(i){var u=users[i];
+ try{await api('PUT','/api/users/'+u.id,{name:$('un'+i).value,designation:$('ug'+i).value,mobile:$('um'+i).value,role:$('ur'+i).value,depots:$('ud'+i).value,password:$('up'+i).value});msg('User saved ✓',true);loadUsers();load()}catch(e){msg(e.message)}}
+async function delU(i){var u=users[i];if(!confirm(u.username+' ke delete korben?'))return;
+ try{await api('DELETE','/api/users/'+u.id);loadUsers();load()}catch(e){msg(e.message)}}
+async function addU(){
+ try{await api('POST','/api/users',{username:$('nu').value,name:$('nn').value,designation:$('ng').value,mobile:$('nm').value,role:$('nr').value,depots:$('nd').value,password:$('np').value});
+  ['nu','nn','ng','nm','nd','np'].forEach(function(f){$(f).value=''});msg('User toiri hoyeche ✓',true);loadUsers();load()}catch(e){msg(e.message)}}
+boot();
+</script></body></html>
