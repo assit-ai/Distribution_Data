@@ -1,211 +1,1442 @@
 <!DOCTYPE html>
-<html lang="en"><head><meta charset="utf-8">
+<html lang="en">
+<head>
+<meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Distribution Daily Update</title>
+<title>Distribution & Fleet Operations Portal</title>
+<!-- SheetJS for local Excel/CSV client-side parsing without server overhead -->
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <style>
-:root{--bg:#f6f7f9;--card:#fff;--tx:#1b1f24;--mut:#667085;--bd:#dfe3e8;--ac:#0b6e4f;--acx:#fff;--bad:#b42318;--ok:#067647;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
-@media (prefers-color-scheme:dark){:root{--bg:#111418;--card:#1a1f26;--tx:#e8eaed;--mut:#9aa4b2;--bd:#2c333d;--ac:#3ddc97;--acx:#0b1f17;--bad:#ff8a80;--ok:#5be0a5}}
-*{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
-.w{max-width:980px;margin:0 auto;padding:16px}.nar{max-width:380px;margin-top:10vh}
-h1{font-size:20px;margin:0}h2{font-size:16px;margin:0 0 10px}
-.top{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap}
-.sub{color:var(--mut);font-size:13px}
-.c{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:14px;margin-bottom:14px}
-.g{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}
-label{display:block;font-size:12px;color:var(--mut);margin-bottom:3px}
-input,select,textarea{width:100%;padding:8px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx);font:inherit}
-textarea{min-height:80px}
-.ov{overflow-x:auto}
-table{border-collapse:collapse;width:100%;min-width:640px}
-th{font-size:12px;color:var(--mut);text-align:left;padding:6px;font-weight:600;border-bottom:1px solid var(--bd)}
-td{padding:6px;border-bottom:1px solid var(--bd)}
-.n{text-align:right}.cv{font-weight:700;text-align:center}
-.bad{color:var(--bad)}.ok{color:var(--ok)}
-button{border:1px solid var(--bd);background:var(--card);color:var(--tx);padding:8px 12px;border-radius:8px;font:inherit;cursor:pointer}
-button.p{background:var(--ac);color:var(--acx);border-color:var(--ac);font-weight:600}
-.r{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
-.note{font-size:13px;color:var(--mut);background:var(--bg);border-radius:8px;padding:10px;margin-top:10px}
-#msg{display:none;border:1px solid var(--bad);color:var(--bad);border-radius:8px;padding:10px;margin-bottom:14px}
-#msg.okm{border-color:var(--ok);color:var(--ok)}
-#out{min-height:260px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px}
-.hid{display:none!important}
-</style></head><body>
+:root {
+  --bg: #f4f6f9;
+  --card: #ffffff;
+  --tx: #1e293b;
+  --mut: #64748b;
+  --bd: #e2e8f0;
+  --ac: #0f766e;
+  --ac-hover: #115e59;
+  --acx: #ffffff;
+  --bad: #ef4444;
+  --bad-bg: #fef2f2;
+  --ok: #10b981;
+  --ok-bg: #ecfdf5;
+  --warn: #f59e0b;
+  --warn-bg: #fffbeb;
+  --primary: #2563eb;
+  --primary-bg: #eff6ff;
+  --radius: 10px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f172a;
+    --card: #1e293b;
+    --tx: #f8fafc;
+    --mut: #94a3b8;
+    --bd: #334155;
+    --ac: #14b8a6;
+    --ac-hover: #2dd4bf;
+    --acx: #042f2e;
+    --bad: #f87171;
+    --bad-bg: #450a0a;
+    --ok: #34d399;
+    --ok-bg: #064e3b;
+    --warn: #fbbf24;
+    --warn-bg: #451a03;
+    --primary: #38bdf8;
+    --primary-bg: #082f49;
+  }
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--bg);
+  color: var(--tx);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+.w { max-width: 1100px; margin: 0 auto; padding: 16px; }
+.nar { max-width: 400px; margin: 8vh auto 0; }
 
-<div id="login" class="w nar hid"><div class="c">
-<h1 style="margin-bottom:12px">Distribution Daily Update</h1>
-<label>Username</label><input id="lu" autocomplete="username" autocapitalize="none">
-<label style="margin-top:10px">Password</label><input id="lp" type="password" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
-<div class="r"><button class="p" onclick="doLogin()">Login</button></div>
-<div id="le" class="bad" style="margin-top:10px;font-size:13px"></div>
-<div style="margin-top:12px"><a href="#" onclick="$('fg').classList.toggle('hid');return false" style="font-size:13px;color:var(--ac)">Password bhule gechen?</a></div>
-<div id="fg" class="hid note"><label>Apnar ID</label><input id="fu" autocapitalize="none">
-<label style="margin-top:8px">Registered mobile number</label><input id="fm" type="tel">
-<div class="r"><button onclick="doForgot()">Request pathan</button></div>
-<div id="fe" style="margin-top:8px;font-size:13px"></div>
-<div style="margin-top:6px">Request admin er kache jabe. Admin verify kore notun password dibe.</div></div></div></div>
+/* Header & Nav */
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 14px 18px;
+  background: var(--card);
+  border: 1px solid var(--bd);
+  border-radius: var(--radius);
+  margin-bottom: 14px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+.brand h1 { font-size: 18px; font-weight: 700; color: var(--ac); }
+.brand .sub { font-size: 12px; color: var(--mut); margin-top: 2px; }
+.header-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.badge { display: inline-flex; align-items: center; padding: 3px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+.badge-admin { background: var(--primary-bg); color: var(--primary); }
+.badge-depot { background: var(--ok-bg); color: var(--ok); }
 
-<div id="app" class="w hid">
-<div class="top"><div><h1>Distribution Daily Update</h1><div class="sub" id="who"></div></div><div class="r" style="margin:0"><button onclick="showPw(true)">Password change</button><button onclick="doLogout()">Logout</button></div></div>
+/* Tabs */
+.tabs {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  border-bottom: 2px solid var(--bd);
+  margin-bottom: 16px;
+  padding-bottom: 4px;
+}
+.tab-btn {
+  background: transparent;
+  border: none;
+  border-bottom: 3px solid transparent;
+  color: var(--mut);
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 6px 6px 0 0;
+  transition: all 0.15s ease;
+}
+.tab-btn:hover { color: var(--tx); background: rgba(0,0,0,0.02); }
+.tab-btn.active { color: var(--ac); border-bottom-color: var(--ac); background: var(--card); }
+
+/* KPI Grid */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.kpi-card {
+  background: var(--card);
+  border: 1px solid var(--bd);
+  border-radius: var(--radius);
+  padding: 14px;
+  position: relative;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+}
+.kpi-label { font-size: 12px; color: var(--mut); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+.kpi-val { font-size: 24px; font-weight: 700; margin-top: 4px; }
+.kpi-sub { font-size: 12px; color: var(--mut); margin-top: 4px; }
+
+/* Cards & Layout */
+.card {
+  background: var(--card);
+  border: 1px solid var(--bd);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 16px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+}
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.card-title { font-size: 15px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+
+/* Grid Forms */
+.g { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+.g-2 { grid-template-columns: 1fr 1fr; }
+label { display: block; font-size: 12px; font-weight: 600; color: var(--mut); margin-bottom: 4px; }
+input, select, textarea {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--bd);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--tx);
+  font: inherit;
+  font-size: 13px;
+  transition: border-color 0.15s;
+}
+input:focus, select:focus, textarea:focus { outline: none; border-color: var(--ac); }
+textarea { min-height: 80px; resize: vertical; }
+
+/* Buttons */
+button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid var(--bd);
+  background: var(--card);
+  color: var(--tx);
+  padding: 7px 14px;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+button:hover { background: var(--bg); }
+button.p { background: var(--ac); color: var(--acx); border-color: var(--ac); }
+button.p:hover { background: var(--ac-hover); border-color: var(--ac-hover); }
+button.warn { background: var(--warn); color: #fff; border-color: var(--warn); }
+button.sm { padding: 4px 8px; font-size: 12px; border-radius: 6px; }
+.btn-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+
+/* Tables */
+.table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+table { width: 100%; border-collapse: collapse; min-width: 600px; font-size: 13px; }
+th { text-align: left; padding: 8px 10px; color: var(--mut); font-size: 12px; font-weight: 600; border-bottom: 1px solid var(--bd); }
+td { padding: 8px 10px; border-bottom: 1px solid var(--bd); vertical-align: middle; }
+tr:hover td { background: rgba(0,0,0,0.015); }
+.num { text-align: right; }
+.center { text-align: center; }
+
+/* Statuses */
+.ok { color: var(--ok); font-weight: 600; }
+.bad { color: var(--bad); font-weight: 600; }
+.warn-txt { color: var(--warn); font-weight: 600; }
+.cover-pill { padding: 2px 6px; border-radius: 4px; font-weight: 700; font-size: 12px; }
+.cover-bad { background: var(--bad-bg); color: var(--bad); }
+.cover-ok { background: var(--ok-bg); color: var(--ok); }
+
+/* Toast Messages */
+#msg {
+  display: none;
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 9999;
+  padding: 12px 18px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  animation: slideIn 0.2s ease;
+}
+#msg.err { background: var(--bad); color: #fff; }
+#msg.suc { background: var(--ok); color: #fff; }
+@keyframes slideIn { from { transform: translateY(-10px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+/* Report Box */
+#out {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 13px;
+  min-height: 280px;
+  background: var(--bg);
+  white-space: pre-wrap;
+  line-height: 1.6;
+}
+
+/* Drag & Drop Upload Zone */
+.drop-zone {
+  border: 2px dashed var(--bd);
+  border-radius: var(--radius);
+  padding: 24px;
+  text-align: center;
+  background: var(--bg);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.drop-zone:hover, .drop-zone.dragover { border-color: var(--ac); background: rgba(15, 118, 110, 0.05); }
+
+.hid { display: none !important; }
+</style>
+</head>
+<body>
+
+<!-- Global Toast Message -->
 <div id="msg"></div>
-<div id="pw" class="c hid"><h2>Password change</h2><div id="pwn" class="note hid" style="margin:0 0 10px">Prothom login, tai apnar nijer notun password set korun.</div>
-<div class="g"><div><label>Ager password</label><input id="pc" type="password" autocomplete="current-password"></div>
-<div><label>Notun password (min 8)</label><input id="pn" type="password" autocomplete="new-password"></div></div>
-<div class="r"><button class="p" onclick="savePw()">Save password</button><button id="pwx" onclick="showPw(false)">Cancel</button></div></div>
-<div id="main">
 
-<div class="c"><div class="g"><div><label>Date</label><input id="date" type="date" onchange="load()"></div></div></div>
-
-<div class="c"><h2>Depot data din</h2>
-<div id="nod" class="note hid"></div>
-<div id="ef"><div class="g">
-<div><label>Depot</label><select id="dep"></select></div>
-<div><label>Category</label><select id="cat"><option>Frozen</option><option>Chicken</option><option>Egg</option><option>Dairy</option><option>Others</option></select></div>
-<div><label>Orders</label><input id="o" type="number" min="0"></div>
-<div><label>Delivered</label><input id="v" type="number" min="0"></div>
-<div><label>Stock (qty)</label><input id="s" type="number" min="0"></div>
-<div><label>Avg daily sale</label><input id="a" type="number" min="0"></div>
+<!-- Login Container -->
+<div id="login" class="w nar hid">
+  <div class="card">
+    <div style="text-align:center; margin-bottom:16px;">
+      <h1 style="font-size:20px; font-weight:700; color:var(--ac)">Distribution Portal</h1>
+      <p style="font-size:13px; color:var(--mut)">Cluster Daily Update & Fleet Tracking</p>
+    </div>
+    <div style="margin-bottom:10px;">
+      <label>User ID / Username</label>
+      <input id="lu" autocomplete="username" autocapitalize="none" placeholder="e.g. admin or depot ID">
+    </div>
+    <div style="margin-bottom:14px;">
+      <label>Password</label>
+      <input id="lp" type="password" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
+    </div>
+    <button class="p" style="width:100%; padding:10px;" onclick="doLogin()">Sign In</button>
+    <div id="le" class="bad" style="margin-top:10px; font-size:12px; text-align:center;"></div>
+    
+    <div style="margin-top:16px; text-align:center;">
+      <a href="#" onclick="$('fg').classList.toggle('hid');return false" style="font-size:12px; color:var(--ac); text-decoration:none;">Forgot password?</a>
+    </div>
+    <div id="fg" class="hid" style="margin-top:12px; padding:12px; background:var(--bg); border-radius:8px;">
+      <label>Your User ID</label>
+      <input id="fu" autocapitalize="none">
+      <label style="margin-top:8px;">Registered Mobile Number</label>
+      <input id="fm" type="tel">
+      <div class="btn-row"><button class="sm" onclick="doForgot()">Submit Request</button></div>
+      <div id="fe" style="margin-top:8px; font-size:12px;"></div>
+    </div>
+  </div>
 </div>
-<div class="r"><button class="p" onclick="saveE()">Save entry</button></div>
-<div class="note">Same depot + category abar save korle update hoy. <b>Stock cover</b> = Stock ÷ Avg daily sale (koyday cholbe). 3 diner kom hole <span class="bad">red</span>.</div></div></div>
 
-<div class="c"><h2>Data submission status</h2><div id="ss"></div></div>
+<!-- Main Application -->
+<div id="app" class="w hid">
+  <!-- Top Bar -->
+  <div class="header">
+    <div class="brand">
+      <h1>Distribution & Fleet Operations</h1>
+      <div class="sub" id="who"></div>
+    </div>
+    <div class="header-actions">
+      <div style="display:flex; align-items:center; gap:6px;">
+        <label style="margin:0; font-size:12px;">Date:</label>
+        <input id="date" type="date" style="width:auto; padding:5px 8px;" onchange="loadAll()">
+      </div>
+      <button class="sm" onclick="showPw(true)">Change Password</button>
+      <button class="sm" onclick="doLogout()">Logout</button>
+    </div>
+  </div>
 
-<div class="c"><h2>Entries</h2>
-<div class="ov"><table><thead><tr><th>Depot</th><th>Category</th><th class="n">Orders</th><th class="n">Delivered</th><th class="n">Pending</th><th class="n">Stock</th><th class="n">Avg/day</th><th>Cover (days)</th><th>By</th><th></th></tr></thead><tbody id="tb"></tbody></table></div>
-<h2 style="margin-top:16px">Category total</h2>
-<div class="ov"><table><thead><tr><th>Category</th><th class="n">Orders</th><th class="n">Delivered</th><th class="n">Pending</th><th class="n">Stock</th><th>Cover (days)</th></tr></thead><tbody id="tt"></tbody></table></div></div>
+  <!-- Mandatory Password Change Modal -->
+  <div id="pw" class="card hid">
+    <div class="card-title">🔐 Set New Password</div>
+    <div id="pwn" class="sub" style="margin-bottom:10px;">First time login detected. Please set a secure password (min 8 chars).</div>
+    <div class="g">
+      <div><label>Current Password</label><input id="pc" type="password"></div>
+      <div><label>New Password (min 8)</label><input id="pn" type="password"></div>
+    </div>
+    <div class="btn-row">
+      <button class="p" onclick="savePw()">Update Password</button>
+      <button id="pwx" onclick="showPw(false)">Cancel</button>
+    </div>
+  </div>
 
-<div class="c"><h2>GT Frozen Sales &amp; Issues <span class="sub" id="rn"></span></h2>
-<div class="g">
-<div><label>Cluster Head</label><input id="head" class="rf"></div>
-<div><label>Today sales</label><input id="st" type="number" class="rf"></div>
-<div><label>Today target</label><input id="stt" type="number" class="rf"></div>
-<div><label>MTD sales</label><input id="sm" type="number" class="rf"></div>
-<div><label>MTD target</label><input id="smt" type="number" class="rf"></div></div>
-<label style="margin-top:12px">Key Issue / Challenges (prottek line e ekta)</label><textarea id="iss" class="rf" placeholder="Issue → Action | Support needed"></textarea>
-<div class="r adm"><button class="p" onclick="saveR()">Save sales &amp; issues</button></div></div>
+  <div id="main">
+    <!-- Navigation Tabs -->
+    <div class="tabs">
+      <button class="tab-btn active" onclick="setTab('dash')">📊 Overview & Report</button>
+      <button class="tab-btn" onclick="setTab('entry')">📝 Daily Entry</button>
+      <button class="tab-btn" onclick="setTab('fleet')">🚚 Fleet & Vehicles</button>
+      <button class="tab-btn adm" onclick="setTab('bulk')">⚡ Bulk Upload (ERP/Excel)</button>
+      <button class="tab-btn adm" onclick="setTab('admin')">👥 Users & Depots</button>
+    </div>
 
-<div class="c"><h2>WhatsApp Report</h2>
-<div class="r" style="margin:0 0 10px"><button class="p" onclick="gen()">Generate report</button><button onclick="cp()" id="cpb">Copy</button></div>
-<textarea id="out" readonly></textarea></div>
+    <!-- ========================================== -->
+    <!-- TAB 1: EXECUTIVE DASHBOARD & REPORT -->
+    <!-- ========================================== -->
+    <div id="tab-dash">
+      <!-- KPI Metric Cards -->
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <div class="kpi-label">Vehicles On Road</div>
+          <div class="kpi-val" id="kpi-onroad" style="color:var(--ac)">0</div>
+          <div class="kpi-sub" id="kpi-fleet-sub">Across 0 depots</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Today GT Frozen Sales</div>
+          <div class="kpi-val" id="kpi-sales">0</div>
+          <div class="kpi-sub" id="kpi-sales-ach">Target: 0 (Ach 0%)</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Pending Deliveries</div>
+          <div class="kpi-val" id="kpi-pending" style="color:var(--warn)">0</div>
+          <div class="kpi-sub" id="kpi-orders-tot">Total Orders: 0</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Depots Submitted</div>
+          <div class="kpi-val" id="kpi-depots">0 / 0</div>
+          <div class="kpi-sub" id="kpi-depots-status">Waiting for entries</div>
+        </div>
+      </div>
 
-<div class="c adm" id="uc"><h2>Admin: Users &amp; depot assignment</h2>
-<h2>Password reset request <span class="sub" id="rqn"></span></h2><div id="rq" class="sub" style="margin-bottom:14px">Kono request nai.</div>
-<div class="ov"><table><thead><tr><th>ID</th><th>Name</th><th>Designation</th><th>Mobile</th><th>Role</th><th>Depot (comma diye)</th><th>Reset password</th><th></th></tr></thead><tbody id="ub"></tbody></table></div>
-<h2 style="margin-top:16px">Notun user</h2>
-<div class="g">
-<div><label>ID (Username)</label><input id="nu" autocapitalize="none"></div>
-<div><label>Name</label><input id="nn"></div>
-<div><label>Designation</label><input id="ng"></div>
-<div><label>Mobile</label><input id="nm" type="tel"></div>
-<div><label>Role</label><select id="nr"><option value="depot">Depot user</option><option value="admin">Admin</option></select></div>
-<div><label>Depot (comma diye)</label><input id="nd" placeholder="Dhaka, Gazipur"></div>
-<div><label>Password (min 8)</label><input id="np" type="text"></div></div>
-<div class="r"><button class="p" onclick="addU()">Add user</button></div></div>
-</div></div>
+      <!-- Sales Target & Highlights (Admin / Cluster Head) -->
+      <div class="card adm">
+        <div class="card-header">
+          <div class="card-title">📈 GT Frozen Sales & Highlights</div>
+          <button class="p sm" onclick="saveReportData()">Save Sales & Issues</button>
+        </div>
+        <div class="g">
+          <div><label>Cluster Head Name</label><input id="head" placeholder="Atikur"></div>
+          <div><label>Today Sales</label><input id="st" type="number" min="0" oninput="calcAch()"></div>
+          <div><label>Today Target</label><input id="stt" type="number" min="0" oninput="calcAch()"></div>
+          <div><label>MTD Sales</label><input id="sm" type="number" min="0" oninput="calcAch()"></div>
+          <div><label>MTD Target</label><input id="smt" type="number" min="0" oninput="calcAch()"></div>
+        </div>
+        <div class="g" style="margin-top:10px;">
+          <div><label>Top Performing Depot</label><input id="top_depot" placeholder="e.g. Gazipur"></div>
+          <div><label>Low Performing Depot</label><input id="low_depot" placeholder="e.g. Savar"></div>
+        </div>
+        <div style="margin-top:12px;">
+          <label>Key Issues / Challenges (1 per line: Issue → Action | Support needed)</label>
+          <textarea id="iss" placeholder="1. Van breakdown at Savar → Action: Replaced with rental pickup | Support needed: Transport bill approval"></textarea>
+        </div>
+      </div>
+
+      <!-- Category Distribution Summary Table -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">📦 Cluster Distribution Summary (Category-wise)</div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Category</th>
+                <th class="num">Orders</th>
+                <th class="num">Delivered</th>
+                <th class="num">Pending</th>
+                <th class="num">Stock</th>
+                <th class="num">Avg Daily</th>
+                <th class="center">Stock Cover</th>
+              </tr>
+            </thead>
+            <tbody id="tt"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- WhatsApp Generator Card -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">📱 WhatsApp Daily Update Generator</div>
+          <div class="btn-row" style="margin:0">
+            <button class="p" onclick="genReport()">Generate Report</button>
+            <button onclick="copyReport()" id="cpb">Copy to Clipboard</button>
+          </div>
+        </div>
+        <textarea id="out" readonly placeholder="Click 'Generate Report' to generate the WhatsApp format..."></textarea>
+      </div>
+
+      <!-- Depot Submission Checklist -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">📋 Depot Submission Live Status</div>
+        </div>
+        <div id="ss" class="g" style="grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));"></div>
+      </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- TAB 2: DAILY DEPOT ENTRY -->
+    <!-- ========================================== -->
+    <div id="tab-entry" class="hid">
+      <!-- Depot Order & Stock Entry Form -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">📝 Depot Daily Entry (Orders, Delivered & Stock)</div>
+        </div>
+        <div id="nod" class="sub hid" style="margin-bottom:10px;"></div>
+        <div id="ef">
+          <div class="g">
+            <div><label>Depot</label><select id="dep" onchange="syncDepotEntryForm()"></select></div>
+            <div><label>Category</label><select id="cat" onchange="syncDepotEntryForm()"><option>Frozen</option><option>Chicken</option><option>Egg</option><option>Dairy</option><option>Others</option></select></div>
+            <div><label>Orders (Qty)</label><input id="o" type="number" min="0"></div>
+            <div><label>Delivered (Qty)</label><input id="v" type="number" min="0"></div>
+            <div><label>Closing Stock (Qty)</label><input id="s" type="number" min="0"></div>
+            <div><label>Avg Daily Sale</label><input id="a" type="number" min="0"></div>
+          </div>
+          <div class="btn-row">
+            <button class="p" onclick="saveEntry()">Save Category Entry</button>
+            <button class="sm" onclick="clearEntryForm()">Clear Form</button>
+          </div>
+          <p class="sub" style="margin-top:8px;">Tip: Same depot + category save korle ager ta update hoy. Stock cover 3 diner kom hole red warning dekhay.</p>
+        </div>
+      </div>
+
+      <!-- Quick Vehicle Status for Selected Depot -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">🚚 Depot Vehicle & Dispatch Status</div>
+          <button class="p sm" onclick="saveDepotVehicles()">Save Vehicle Status</button>
+        </div>
+        <div class="g">
+          <div><label>Selected Depot</label><input id="v_depot_name" readonly style="font-weight:700"></div>
+          <div><label>Total Vans Assigned</label><input id="v_total" type="number" min="0" value="0"></div>
+          <div><label>Vans Dispatched</label><input id="v_disp" type="number" min="0" value="0" oninput="autoCalcOnRoad()"></div>
+          <div><label>Delivery Completed</label><input id="v_done" type="number" min="0" value="0" oninput="autoCalcOnRoad()"></div>
+          <div><label>Vans On Road (Active)</label><input id="v_onroad" type="number" min="0" value="0" style="color:var(--ac); font-weight:700"></div>
+        </div>
+        <div style="margin-top:10px;">
+          <label>Trip / Driver Notes (Optional)</label>
+          <input id="v_notes" placeholder="e.g. Van-2 delayed due to highway traffic, all other vans smooth">
+        </div>
+      </div>
+
+      <!-- Detailed Entries Table -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">📄 Today's Entries (Depot-wise)</div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Depot</th>
+                <th>Category</th>
+                <th class="num">Orders</th>
+                <th class="num">Delivered</th>
+                <th class="num">Pending</th>
+                <th class="num">Stock</th>
+                <th class="num">Avg/day</th>
+                <th class="center">Cover</th>
+                <th>Submitted By</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="tb"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- TAB 3: FLEET & VEHICLE TRACKING -->
+    <!-- ========================================== -->
+    <div id="tab-fleet" class="hid">
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title">🚚 Cluster Fleet & Logistics Live Tracking</div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Depot</th>
+                <th class="num">Total Vans</th>
+                <th class="num">Dispatched</th>
+                <th class="num" style="color:var(--ac)">On Road</th>
+                <th class="num" style="color:var(--ok)">Delivery Done</th>
+                <th>Notes / Incident</th>
+                <th>Updated By</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody id="fleet_tb"></tbody>
+            <tfoot>
+              <tr style="font-weight:700; background:rgba(0,0,0,0.02)">
+                <td>Total Cluster Fleet</td>
+                <td class="num" id="flt_tot_vans">0</td>
+                <td class="num" id="flt_tot_disp">0</td>
+                <td class="num" id="flt_tot_road" style="color:var(--ac)">0</td>
+                <td class="num" id="flt_tot_done" style="color:var(--ok)">0</td>
+                <td colspan="3"></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- TAB 4: BULK UPLOAD (EXCEL / POLOXY ERP) -->
+    <!-- ========================================== -->
+    <div id="tab-bulk" class="card adm hid">
+      <div class="card-header">
+        <div class="card-title">⚡ Bulk Upload (from Poloxy ERP / Excel / Spreadsheets)</div>
+      </div>
+      <p class="sub" style="margin-bottom:14px;">
+        আপনি Poloxy ERP বা Excel শিট থেকে ডাটা সরাসরি কপি-পেস্ট করে অথবা <b>.xlsx / .csv</b> ফাইল ড্রপ করে একবারে সব ডিপোর স্টক বা অর্ডার আপডেট করতে পারেন।
+      </p>
+
+      <!-- Drag & Drop Zone -->
+      <div class="drop-zone" id="drop-zone" onclick="$('file-input').click()">
+        <input type="file" id="file-input" class="hid" accept=".xlsx,.xls,.csv" onchange="handleFileSelect(event)">
+        <div style="font-size:24px; margin-bottom:6px;">📁</div>
+        <div style="font-weight:600; font-size:14px;">Drag & Drop your Excel / CSV file here</div>
+        <div class="sub" style="margin-top:4px;">or click to browse files (.xlsx, .xls, .csv)</div>
+      </div>
+
+      <div style="margin: 16px 0; text-align: center; color: var(--mut); font-weight: 600;">— OR PASTE EXCEL ROWS DIRECTLY —</div>
+
+      <!-- Paste Box -->
+      <div>
+        <label>Excel / Poloxy Table Paste Box (Copy from Excel & Ctrl+V here)</label>
+        <textarea id="bulk-paste" style="min-height:110px; font-family:monospace; font-size:12px;" placeholder="Depot	Category	Stock	Avg_Daily
+Dhaka	Frozen	12000	2800
+Gazipur	Chicken	8500	1500
+Savar	Egg	42000	7500" oninput="parsePastedTable()"></textarea>
+      </div>
+
+      <!-- Auto Column Matcher Options -->
+      <div class="g" style="margin-top:12px;">
+        <div>
+          <label>Upload Type</label>
+          <select id="bulk-mode">
+            <option value="all">📦 Full (Stock + Orders + Avg Daily)</option>
+            <option value="stock">📊 Stock & Avg Daily Only (Poloxy ERP)</option>
+            <option value="orders">🛒 Orders & Delivery Only</option>
+          </select>
+        </div>
+        <div style="display:flex; align-items:flex-end;">
+          <button class="p" onclick="processAndCommitBulk()" id="btn-commit-bulk" disabled>
+            Save All Parsed Rows to Database
+          </button>
+        </div>
+      </div>
+
+      <!-- Parsed Preview -->
+      <div id="bulk-preview-wrap" class="hid" style="margin-top:16px;">
+        <div class="card-header">
+          <div class="card-title" style="font-size:14px;">Preview (<span id="parsed-count">0</span> valid rows ready to upload)</div>
+        </div>
+        <div class="table-wrap" style="max-height:260px; overflow-y:auto;">
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Depot</th>
+                <th>Category</th>
+                <th class="num">Orders</th>
+                <th class="num">Delivered</th>
+                <th class="num">Stock</th>
+                <th class="num">Avg Daily</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="bulk-preview-tb"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- TAB 5: ADMIN & USER MANAGEMENT -->
+    <!-- ========================================== -->
+    <div id="tab-admin" class="card adm hid">
+      <div class="card-header">
+        <div class="card-title">👥 User Management & Depot Assignment</div>
+      </div>
+
+      <!-- Password Reset Requests -->
+      <div style="margin-bottom:16px;">
+        <h3 style="font-size:14px; font-weight:700; margin-bottom:6px;">Password Reset Requests <span id="rqn" class="bad"></span></h3>
+        <div id="rq" class="sub">No pending password reset requests.</div>
+      </div>
+
+      <!-- Existing Users Table -->
+      <div class="table-wrap" style="margin-bottom:20px;">
+        <table>
+          <thead>
+            <tr>
+              <th>Username</th>
+              <th>Name</th>
+              <th>Designation</th>
+              <th>Mobile</th>
+              <th>Role</th>
+              <th>Assigned Depots</th>
+              <th>Reset PW</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="ub"></tbody>
+        </table>
+      </div>
+
+      <!-- Create New User Form -->
+      <h3 style="font-size:14px; font-weight:700; margin-bottom:10px;">Add New User</h3>
+      <div class="g">
+        <div><label>User ID (Username)</label><input id="nu" autocapitalize="none" placeholder="e.g. gazipur_incharge"></div>
+        <div><label>Full Name</label><input id="nn" placeholder="e.g. Rafiqul Islam"></div>
+        <div><label>Designation</label><input id="ng" placeholder="e.g. Depot Incharge"></div>
+        <div><label>Mobile Number</label><input id="nm" type="tel" placeholder="017xxxxxxxx"></div>
+        <div><label>Role</label><select id="nr"><option value="depot">Depot User</option><option value="admin">Cluster Head / Admin</option></select></div>
+        <div><label>Depot(s) (comma separated)</label><input id="nd" placeholder="Gazipur, Savar"></div>
+        <div><label>Initial Password (min 8)</label><input id="np" placeholder="ChangeMe@123"></div>
+      </div>
+      <div class="btn-row">
+        <button class="p" onclick="addUser()">Create User</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <script>
-var CATS=['Frozen','Chicken','Egg','Dairy','Others'],me=null,deps=[],ents=[],users=[];
-var $=function(i){return document.getElementById(i)};
-function num(x){return parseFloat(x)||0}
-function fmt(x){return Math.round(x).toLocaleString('en-US')}
-function pct(a,b){return b>0?Math.round(a/b*100):0}
-function lc(s){return String(s).trim().toLowerCase()}
-function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
-function cvh(s,a){if(!(a>0))return '–';var c=s/a;return '<span class="'+(c<3?'bad':'ok')+'">'+c.toFixed(1)+'</span>'}
-function dstr(v){var d=new Date(v+'T00:00:00');return isNaN(d)?v:d.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'})}
-function msg(t,ok){var m=$('msg');m.textContent=t;m.className=ok?'okm':'';m.style.display='block';clearTimeout(msg.t);msg.t=setTimeout(function(){m.style.display='none'},ok?2500:6000)}
-async function api(m,u,b){
- var o={method:m,credentials:'same-origin',headers:{}};
- if(m!=='GET'&&m!=='DELETE'){o.headers['Content-Type']='application/json';o.body=JSON.stringify(b||{})}
- var r=await fetch(u,o),j={};try{j=await r.json()}catch(e){}
- if(r.status===401&&me){location.reload();return}
- if(!r.ok)throw new Error(j.error||('Error '+r.status));return j}
-function allowed(){return me.role==='admin'?deps:me.depots}
-async function boot(){
- try{me=await api('GET','/api/me')}catch(e){me=null;$('login').classList.remove('hid');return}
- $('login').classList.add('hid');$('app').classList.remove('hid');
- $('who').textContent=(me.name||me.username)+(me.designation?' · '+me.designation:'')+' · '+(me.role==='admin'?'Admin':'Depot user')+' · ID '+me.username;
- var ad=me.role==='admin';document.querySelectorAll('.adm').forEach(function(e){e.classList.toggle('hid',!ad)});
- document.querySelectorAll('.rf').forEach(function(e){e.disabled=!ad});
- $('rn').textContent=ad?'':'(shudhu admin edit korte pare)';
- $('date').value=new Date(Date.now()-new Date().getTimezoneOffset()*60000).toISOString().slice(0,10);
- if(me.must_change){showPw(true,true);return}
- await enter();
- setInterval(function(){if(!document.hidden&&me&&!me.must_change)load(true)},30000);
+const CATS = ['Frozen', 'Chicken', 'Egg', 'Dairy', 'Others'];
+let me = null, deps = [], ents = [], vehicles = [], users = [];
+let parsedBulkRows = [];
+
+const $ = id => document.getElementById(id);
+const num = x => parseFloat(x) || 0;
+const fmt = x => Math.round(num(x)).toLocaleString('en-US');
+const pct = (a, b) => b > 0 ? Math.round(a / b * 100) : 0;
+const lc = s => String(s || '').trim().toLowerCase();
+const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+function msg(text, ok = false) {
+  const m = $('msg');
+  m.textContent = text;
+  m.className = ok ? 'suc' : 'err';
+  m.style.display = 'block';
+  clearTimeout(msg.timer);
+  msg.timer = setTimeout(() => { m.style.display = 'none'; }, ok ? 3000 : 6000);
 }
-async function enter(){await load();if(me.role==='admin')loadUsers()}
-function showPw(on,forced){$('pw').classList.toggle('hid',!on);$('main').classList.toggle('hid',!!forced&&on);$('pwn').classList.toggle('hid',!forced);$('pwx').classList.toggle('hid',!!forced);if(on)$('pc').focus()}
-async function savePw(){
- try{await api('POST','/api/password',{current:$('pc').value,password:$('pn').value});var f=me.must_change;me.must_change=false;$('pc').value='';$('pn').value='';showPw(false);msg('Password change hoyeche ✓',true);if(f){await enter();setInterval(function(){if(!document.hidden)load(true)},30000)}}catch(e){msg(e.message)}}
-async function doForgot(){
- var e=$('fe');e.className='';e.textContent='';
- try{await api('POST','/api/forgot',{username:$('fu').value,mobile:$('fm').value});e.className='ok';e.textContent='Request pathano hoyeche. Admin apnar sathe jogajog korbe.'}catch(x){e.className='bad';e.textContent=x.message}}
-async function doLogin(){
- $('le').textContent='';
- try{await api('POST','/api/login',{username:$('lu').value,password:$('lp').value});$('lp').value='';await boot()}catch(e){$('le').textContent=e.message}}
-async function doLogout(){try{await api('POST','/api/logout',{})}catch(e){}location.reload()}
-async function load(quiet){
- var d=$('date').value;if(!d)return;
- try{
-  var x=await Promise.all([api('GET','/api/entries?date='+d),api('GET','/api/report?date='+d),api('GET','/api/depots')]);
-  ents=x[0].entries;deps=x[2].depots;
-  {var r=x[1].report,m={head:r.head,st:r.today_sales,stt:r.today_target,sm:r.mtd_sales,smt:r.mtd_target,iss:r.issues};
-   Object.keys(m).forEach(function(k){var el=$(k);if(document.activeElement!==el)el.value=(m[k]===0||m[k]==null)?'':m[k]})}
-  mine();render();
- }catch(e){if(!quiet)msg(e.message)}}
-function mine(){
- var a=allowed(),sel=$('dep'),cur=sel.value;
- sel.innerHTML=a.map(function(x){return '<option>'+esc(x)+'</option>'}).join('');if(a.indexOf(cur)>=0)sel.value=cur;
- var nd=$('nod');
- if(!a.length){nd.classList.remove('hid');$('ef').classList.add('hid');nd.textContent=me.role==='admin'?'Age niche theke user toiri kore depot assign korun.':'Apnake ekhono kono depot assign kora hoyni. Admin ke bolun.'}
- else{nd.classList.add('hid');$('ef').classList.remove('hid')}}
-async function saveE(){
- try{await api('PUT','/api/entries',{date:$('date').value,depot:$('dep').value,category:$('cat').value,orders:$('o').value||0,delivered:$('v').value||0,stock:$('s').value||0,avg_daily:$('a').value||0});
-  ['o','v','s','a'].forEach(function(f){$(f).value=''});msg('Saved ✓',true);load()}catch(e){msg(e.message)}}
-function canMod(r){return allowed().some(function(d){return lc(d)===lc(r.depot)})}
-function edit(i){var r=ents[i];$('dep').value=r.depot;$('cat').value=r.category;$('o').value=r.orders;$('v').value=r.delivered;$('s').value=r.stock;$('a').value=r.avg_daily;window.scrollTo(0,0)}
-async function del(i){var r=ents[i];if(!confirm('Delete korben?'))return;
- try{await api('DELETE','/api/entries?date='+encodeURIComponent(r.date)+'&depot='+encodeURIComponent(r.depot)+'&category='+encodeURIComponent(r.category));load()}catch(e){msg(e.message)}}
-async function saveR(){
- try{await api('PUT','/api/report',{date:$('date').value,head:$('head').value,today_sales:$('st').value||0,today_target:$('stt').value||0,mtd_sales:$('sm').value||0,mtd_target:$('smt').value||0,issues:$('iss').value});msg('Saved ✓',true)}catch(e){msg(e.message)}}
-function tot(){var t={};CATS.forEach(function(c){t[c]={o:0,v:0,s:0,a:0,n:0}});ents.forEach(function(r){var x=t[r.category]||t.Others;x.n++;x.o+=r.orders;x.v+=r.delivered;x.s+=r.stock;x.a+=r.avg_daily});return t}
-function render(){
- $('tb').innerHTML=ents.length?ents.map(function(r,i){var m=canMod(r);return '<tr><td>'+esc(r.depot)+'</td><td>'+esc(r.category)+'</td><td class="n">'+fmt(r.orders)+'</td><td class="n">'+fmt(r.delivered)+'</td><td class="n">'+fmt(r.orders-r.delivered)+'</td><td class="n">'+fmt(r.stock)+'</td><td class="n">'+fmt(r.avg_daily)+'</td><td class="cv">'+cvh(r.stock,r.avg_daily)+'</td><td class="sub">'+esc(r.by||'')+'</td><td>'+(m?'<button onclick="edit('+i+')">Edit</button> <button onclick="del('+i+')">×</button>':'')+'</td></tr>'}).join(''):'<tr><td colspan="10" class="sub">Ei date e ekhono kono entry nai.</td></tr>';
- var t=tot();$('tt').innerHTML=CATS.filter(function(c){return t[c].n}).map(function(c){var x=t[c];return '<tr><td>'+c+'</td><td class="n">'+fmt(x.o)+'</td><td class="n">'+fmt(x.v)+'</td><td class="n">'+fmt(x.o-x.v)+'</td><td class="n">'+fmt(x.s)+'</td><td class="cv">'+cvh(x.s,x.a)+'</td></tr>'}).join('');
- var by={},miss=0;ents.forEach(function(r){var k=lc(r.depot);(by[k]=by[k]||[]).push(r.category)});
- $('ss').innerHTML=deps.length?deps.map(function(d){var c=by[lc(d)];if(!c)miss++;return '<div>'+(c?'✅ ':'❌ ')+esc(d)+' <span class="sub">'+(c?esc(c.join(', ')):'data dey nai')+'</span></div>'}).join('')+'<div class="note">'+(miss?miss+' ti depot er data baki.':'Sob depot data diyeche ✓')+'</div>':'<span class="sub">Ekhono kono depot assign kora nai.</span>';
+
+async function api(method, url, body) {
+  const opts = { method, credentials: 'same-origin', headers: {} };
+  if (method !== 'GET' && method !== 'DELETE') {
+    opts.headers['Content-Type'] = 'application/json';
+    opts.body = JSON.stringify(body || {});
+  }
+  const res = await fetch(url, opts);
+  let json = {};
+  try { json = await res.json(); } catch(e) {}
+  if (res.status === 401 && me) { location.reload(); return; }
+  if (!res.ok) throw new Error(json.error || ('Server error: ' + res.status));
+  return json;
 }
-function gen(){
- var t=tot(),L=['*Cluster Manager Daily Update*','','*Cluster Head:* '+$('head').value,'*Date:* '+dstr($('date').value),'','*Key Points:*','📈 *GT Frozen Sales*',
- '• Today: '+fmt(num($('st').value))+' (Target '+fmt(num($('stt').value))+' | Ach '+pct(num($('st').value),num($('stt').value))+'%)',
- '• MTD: '+fmt(num($('sm').value))+' (Target '+fmt(num($('smt').value))+' | Ach '+pct(num($('sm').value),num($('smt').value))+'%)','','🚚 *Distribution (Category-wise)*'];
- CATS.forEach(function(c){var x=t[c];if(x.n){var cv=x.a>0?(x.s/x.a).toFixed(1)+' days':'–';L.push('• '+c+': Orders '+fmt(x.o)+' | Delivered '+fmt(x.v)+' | Pending '+fmt(x.o-x.v)+' | Stock cover '+cv)}});
- L.push('','*Key Issue/ Challenges:*');
- var is=$('iss').value.split('\n').map(function(x){return x.trim()}).filter(Boolean);
- if(!is.length)L.push('1. None');else is.forEach(function(x,i){L.push((i+1)+'. '+x)});
- $('out').value=L.join('\n');
+
+function allowed() {
+  return me.role === 'admin' ? deps : me.depots;
 }
-function cp(){var t=$('out');if(!t.value)gen();t.select();var ok=false;try{ok=navigator.clipboard?(navigator.clipboard.writeText(t.value),true):document.execCommand('copy')}catch(e){try{ok=document.execCommand('copy')}catch(x){}}
- $('cpb').textContent=ok?'Copied ✓':'Select & copy manually';setTimeout(function(){$('cpb').textContent='Copy'},2000)}
-// ----- admin users -----
-async function loadUsers(){
- try{users=(await api('GET','/api/users')).users}catch(e){return msg(e.message)}
- $('ub').innerHTML=users.map(function(u,i){return '<tr><td>'+esc(u.username)+'</td><td><input id="un'+i+'" value="'+esc(u.name)+'"></td><td><input id="ug'+i+'" value="'+esc(u.designation)+'"></td><td><input id="um'+i+'" type="tel" value="'+esc(u.mobile)+'"></td>'+
-  '<td><select id="ur'+i+'"><option value="depot"'+(u.role==='depot'?' selected':'')+'>Depot</option><option value="admin"'+(u.role==='admin'?' selected':'')+'>Admin</option></select></td>'+
-  '<td><input id="ud'+i+'" value="'+esc((u.depots||[]).join(', '))+'"></td><td><input id="up'+i+'" placeholder="notun password"></td>'+
-  '<td><button onclick="saveU('+i+')">Save</button> '+(u.id===me.id?'':'<button onclick="delU('+i+')">×</button>')+'</td></tr>'}).join('');loadResets()}
-async function loadResets(){
- try{var r=(await api('GET','/api/resets')).resets;$('rqn').textContent=r.length?'('+r.length+' pending)':'';
-  $('rq').innerHTML=r.length?r.map(function(q){return '<div style="margin:4px 0">'+(q.mobile_match?'✅ Mobile mile geche':'⚠️ Mobile mile ni')+' · <b>'+esc(q.username)+'</b> ('+esc(q.name)+') · dewa mobile: '+esc(q.submitted)+' · <button onclick="dismissR('+q.id+')">Dismiss</button></div>'}).join('')+'<div class="note">Mobile e verify kore, niche user er "Reset password" ghore notun password diye Save korun. Save korle request nijei muche jabe.</div>':'Kono request nai.'}catch(e){}}
-async function dismissR(id){try{await api('DELETE','/api/resets/'+id);loadResets()}catch(e){msg(e.message)}}
-async function saveU(i){var u=users[i];
- try{await api('PUT','/api/users/'+u.id,{name:$('un'+i).value,designation:$('ug'+i).value,mobile:$('um'+i).value,role:$('ur'+i).value,depots:$('ud'+i).value,password:$('up'+i).value});msg('User saved ✓',true);loadUsers();load()}catch(e){msg(e.message)}}
-async function delU(i){var u=users[i];if(!confirm(u.username+' ke delete korben?'))return;
- try{await api('DELETE','/api/users/'+u.id);loadUsers();load()}catch(e){msg(e.message)}}
-async function addU(){
- try{await api('POST','/api/users',{username:$('nu').value,name:$('nn').value,designation:$('ng').value,mobile:$('nm').value,role:$('nr').value,depots:$('nd').value,password:$('np').value});
-  ['nu','nn','ng','nm','nd','np'].forEach(function(f){$(f).value=''});msg('User toiri hoyeche ✓',true);loadUsers();load()}catch(e){msg(e.message)}}
+
+// Tab Switching
+function setTab(tabName) {
+  ['dash', 'entry', 'fleet', 'bulk', 'admin'].forEach(t => {
+    const el = $('tab-' + t);
+    if (el) el.classList.toggle('hid', t !== tabName);
+  });
+  document.querySelectorAll('.tab-btn').forEach(b => {
+    const isAct = b.getAttribute('onclick')?.includes("'" + tabName + "'");
+    b.classList.toggle('active', !!isAct);
+  });
+}
+
+// Initial Boot
+async function boot() {
+  try {
+    me = await api('GET', '/api/me');
+  } catch (e) {
+    me = null;
+    $('login').classList.remove('hid');
+    return;
+  }
+  $('login').classList.add('hid');
+  $('app').classList.remove('hid');
+
+  const rolePill = me.role === 'admin'
+    ? '<span class="badge badge-admin">Admin / Cluster Head</span>'
+    : '<span class="badge badge-depot">Depot User</span>';
+  $('who').innerHTML = `<b>${esc(me.name || me.username)}</b> · ${esc(me.designation || '')} · ${rolePill} (ID: ${esc(me.username)})`;
+
+  const isAdmin = me.role === 'admin';
+  document.querySelectorAll('.adm').forEach(el => el.classList.toggle('hid', !isAdmin));
+
+  // Set default today date in local timezone
+  if (!$('date').value) {
+    const local = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+    $('date').value = local;
+  }
+
+  if (me.must_change) {
+    showPw(true, true);
+    return;
+  }
+
+  await loadAll();
+  if (isAdmin) loadUsers();
+  setInterval(() => { if (!document.hidden && me && !me.must_change) loadAll(true); }, 30000);
+}
+
+// Load Data
+async function loadAll(quiet = false) {
+  const d = $('date').value;
+  if (!d) return;
+  try {
+    const [entRes, repRes, depRes, fltRes] = await Promise.all([
+      api('GET', '/api/entries?date=' + d),
+      api('GET', '/api/report?date=' + d),
+      api('GET', '/api/depots'),
+      api('GET', '/api/vehicles?date=' + d)
+    ]);
+    ents = entRes.entries;
+    deps = depRes.depots;
+    vehicles = fltRes.vehicles;
+
+    // Populate Report Fields
+    const r = repRes.report;
+    $('head').value = r.head || 'Atikur';
+    $('st').value = r.today_sales || '';
+    $('stt').value = r.today_target || '';
+    $('sm').value = r.mtd_sales || '';
+    $('smt').value = r.mtd_target || '';
+    $('top_depot').value = r.top_depot || '';
+    $('low_depot').value = r.low_depot || '';
+    $('iss').value = r.issues || '';
+
+    calcAch();
+    populateDepotDropdown();
+    renderAll();
+  } catch (e) {
+    if (!quiet) msg(e.message);
+  }
+}
+
+function calcAch() {
+  const st = num($('st').value), stt = num($('stt').value);
+  $('kpi-sales').textContent = st ? fmt(st) : '–';
+  $('kpi-sales-ach').textContent = `Target: ${fmt(stt)} (Ach ${pct(st, stt)}%)`;
+}
+
+function populateDepotDropdown() {
+  const a = allowed();
+  const sel = $('dep');
+  const prev = sel.value;
+  sel.innerHTML = a.map(d => `<option value="${esc(d)}">${esc(d)}</option>`).join('');
+  if (a.includes(prev)) sel.value = prev;
+
+  const nod = $('nod');
+  const ef = $('ef');
+  if (!a.length) {
+    nod.classList.remove('hid');
+    ef.classList.add('hid');
+    nod.textContent = me.role === 'admin' ? 'No depots assigned yet. Create users and assign depots.' : 'You have no depots assigned. Contact your Cluster Head.';
+  } else {
+    nod.classList.add('hid');
+    ef.classList.remove('hid');
+  }
+  syncDepotEntryForm();
+}
+
+function syncDepotEntryForm() {
+  const curDep = $('dep').value;
+  $('v_depot_name').value = curDep || '–';
+
+  // Load existing vehicle data if any
+  const vObj = vehicles.find(v => lc(v.depot) === lc(curDep));
+  if (vObj) {
+    $('v_total').value = vObj.total_vehicles || 0;
+    $('v_disp').value = vObj.dispatched || 0;
+    $('v_onroad').value = vObj.on_road || 0;
+    $('v_done').value = vObj.delivered || 0;
+    $('v_notes').value = vObj.notes || '';
+  } else {
+    $('v_total').value = 0;
+    $('v_disp').value = 0;
+    $('v_onroad').value = 0;
+    $('v_done').value = 0;
+    $('v_notes').value = '';
+  }
+}
+
+function autoCalcOnRoad() {
+  const disp = num($('v_disp').value);
+  const done = num($('v_done').value);
+  const onRoad = Math.max(0, disp - done);
+  $('v_onroad').value = onRoad;
+}
+
+// Category Total Aggregate
+function getCategoryTotals() {
+  const t = {};
+  CATS.forEach(c => { t[c] = { o: 0, v: 0, s: 0, a: 0, n: 0 }; });
+  ents.forEach(r => {
+    const x = t[r.category] || t.Others;
+    x.n++;
+    x.o += r.orders;
+    x.v += r.delivered;
+    x.s += r.stock;
+    x.a += r.avg_daily;
+  });
+  return t;
+}
+
+// Render UI Components
+function renderAll() {
+  // 1. KPI Cards
+  const catTotals = getCategoryTotals();
+  let totOrders = 0, totDelivered = 0;
+  CATS.forEach(c => {
+    totOrders += catTotals[c].o;
+    totDelivered += catTotals[c].v;
+  });
+  const totPending = Math.max(0, totOrders - totDelivered);
+  $('kpi-pending').textContent = fmt(totPending);
+  $('kpi-orders-tot').textContent = `Orders: ${fmt(totOrders)} | Delivered: ${fmt(totDelivered)}`;
+
+  // Fleet Totals
+  let totVans = 0, totDisp = 0, totRoad = 0, totDone = 0;
+  vehicles.forEach(v => {
+    totVans += v.total_vehicles || 0;
+    totDisp += v.dispatched || 0;
+    totRoad += v.on_road || 0;
+    totDone += v.delivered || 0;
+  });
+  $('kpi-onroad').textContent = totRoad;
+  $('kpi-fleet-sub').textContent = `Dispatched: ${totDisp} | Delivered: ${totDone}`;
+
+  $('flt_tot_vans').textContent = totVans;
+  $('flt_tot_disp').textContent = totDisp;
+  $('flt_tot_road').textContent = totRoad;
+  $('flt_tot_done').textContent = totDone;
+
+  // Depots Submitted Status
+  const submittedDepots = new Set(ents.map(r => lc(r.depot)));
+  const allKnownDepots = deps.length ? deps : [...new Set(ents.map(r => r.depot))];
+  const subCount = allKnownDepots.filter(d => submittedDepots.has(lc(d))).length;
+  $('kpi-depots').textContent = `${subCount} / ${allKnownDepots.length}`;
+  $('kpi-depots-status').textContent = subCount === allKnownDepots.length && allKnownDepots.length > 0 ? 'All submitted ✓' : `${allKnownDepots.length - subCount} pending`;
+
+  // 2. Summary Category Table
+  $('tt').innerHTML = CATS.map(c => {
+    const x = catTotals[c];
+    const cov = x.a > 0 ? (x.s / x.a).toFixed(1) : '–';
+    const covClass = x.a > 0 && (x.s / x.a) < 3 ? 'cover-bad' : 'cover-ok';
+    return `<tr>
+      <td><b>${c}</b></td>
+      <td class="num">${fmt(x.o)}</td>
+      <td class="num">${fmt(x.v)}</td>
+      <td class="num" style="color:var(--warn)">${fmt(x.o - x.v)}</td>
+      <td class="num">${fmt(x.s)}</td>
+      <td class="num">${fmt(x.a)}</td>
+      <td class="center"><span class="cover-pill ${covClass}">${cov} days</span></td>
+    </tr>`;
+  }).join('');
+
+  // 3. Depot Detailed Entries Table
+  $('tb').innerHTML = ents.length ? ents.map((r, i) => {
+    const canEdit = allowed().some(d => lc(d) === lc(r.depot));
+    const cov = r.avg_daily > 0 ? (r.stock / r.avg_daily).toFixed(1) : '–';
+    const covClass = r.avg_daily > 0 && (r.stock / r.avg_daily) < 3 ? 'cover-bad' : 'cover-ok';
+    return `<tr>
+      <td><b>${esc(r.depot)}</b></td>
+      <td>${esc(r.category)}</td>
+      <td class="num">${fmt(r.orders)}</td>
+      <td class="num">${fmt(r.delivered)}</td>
+      <td class="num" style="color:var(--warn)">${fmt(r.orders - r.delivered)}</td>
+      <td class="num">${fmt(r.stock)}</td>
+      <td class="num">${fmt(r.avg_daily)}</td>
+      <td class="center"><span class="cover-pill ${covClass}">${cov}</span></td>
+      <td class="sub">${esc(r.by || '')}</td>
+      <td>${canEdit ? `<button class="sm" onclick="editEntry(${i})">Edit</button> <button class="sm" style="color:var(--bad)" onclick="delEntry(${i})">×</button>` : ''}</td>
+    </tr>`;
+  }).join('') : `<tr><td colspan="10" class="center sub" style="padding:16px;">No entries recorded for this date.</td></tr>`;
+
+  // 4. Fleet Live Tracking Table
+  const fleetDepotSet = new Set(deps);
+  vehicles.forEach(v => fleetDepotSet.add(v.depot));
+  const fleetList = [...fleetDepotSet];
+
+  $('fleet_tb').innerHTML = fleetList.length ? fleetList.map(depName => {
+    const v = vehicles.find(x => lc(x.depot) === lc(depName)) || { total_vehicles: 0, dispatched: 0, on_road: 0, delivered: 0, notes: '', by: '' };
+    const canEdit = allowed().some(d => lc(d) === lc(depName));
+    return `<tr>
+      <td><b>${esc(depName)}</b></td>
+      <td class="num">${v.total_vehicles}</td>
+      <td class="num">${v.dispatched}</td>
+      <td class="num" style="font-weight:700; color:var(--ac)">${v.on_road}</td>
+      <td class="num" style="font-weight:700; color:var(--ok)">${v.delivered}</td>
+      <td class="sub">${esc(v.notes || '—')}</td>
+      <td class="sub">${esc(v.by || '—')}</td>
+      <td>${canEdit ? `<button class="sm" onclick="quickEditFleet('${esc(depName)}')">Update</button>` : ''}</td>
+    </tr>`;
+  }).join('') : `<tr><td colspan="8" class="center sub" style="padding:16px;">No vehicles data yet.</td></tr>`;
+
+  // 5. Depot Submission Checklist
+  const depotSubMap = {};
+  ents.forEach(r => { (depotSubMap[lc(r.depot)] = depotSubMap[lc(r.depot)] || []).push(r.category); });
+  $('ss').innerHTML = allKnownDepots.map(d => {
+    const has = depotSubMap[lc(d)];
+    return `<div style="padding:8px 12px; background:var(--card); border:1px solid var(--bd); border-radius:8px; display:flex; justify-content:space-between; align-items:center;">
+      <span><b>${esc(d)}</b></span>
+      <span class="badge ${has ? 'badge-depot' : 'cover-bad'}">${has ? '✓ Submitted' : 'Pending'}</span>
+    </div>`;
+  }).join('');
+}
+
+// Save Entry
+async function saveEntry() {
+  try {
+    const d = $('date').value;
+    const dep = $('dep').value;
+    const cat = $('cat').value;
+    const o = num($('o').value);
+    const v = num($('v').value);
+    const s = num($('s').value);
+    const a = num($('a').value);
+
+    await api('PUT', '/api/entries', { date: d, depot: dep, category: cat, orders: o, delivered: v, stock: s, avg_daily: a });
+    msg('Category entry saved successfully ✓', true);
+    clearEntryForm();
+    await loadAll(true);
+  } catch (e) {
+    msg(e.message);
+  }
+}
+
+function clearEntryForm() {
+  ['o', 'v', 's', 'a'].forEach(id => $(id).value = '');
+}
+
+function editEntry(idx) {
+  const r = ents[idx];
+  $('dep').value = r.depot;
+  $('cat').value = r.category;
+  $('o').value = r.orders;
+  $('v').value = r.delivered;
+  $('s').value = r.stock;
+  $('a').value = r.avg_daily;
+  setTab('entry');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+async function delEntry(idx) {
+  const r = ents[idx];
+  if (!confirm(`Delete entry for ${r.depot} - ${r.category}?`)) return;
+  try {
+    await api('DELETE', `/api/entries?date=${encodeURIComponent(r.date)}&depot=${encodeURIComponent(r.depot)}&category=${encodeURIComponent(r.category)}`);
+    msg('Entry deleted', true);
+    loadAll(true);
+  } catch (e) {
+    msg(e.message);
+  }
+}
+
+// Save Depot Vehicles
+async function saveDepotVehicles() {
+  try {
+    const d = $('date').value;
+    const dep = $('v_depot_name').value;
+    if (!dep || dep === '–') throw new Error('Please select a depot');
+
+    await api('PUT', '/api/vehicles', {
+      date: d,
+      depot: dep,
+      total_vehicles: num($('v_total').value),
+      dispatched: num($('v_disp').value),
+      on_road: num($('v_onroad').value),
+      delivered: num($('v_done').value),
+      notes: $('v_notes').value
+    });
+    msg(`Vehicle status saved for ${dep} ✓`, true);
+    loadAll(true);
+  } catch (e) {
+    msg(e.message);
+  }
+}
+
+function quickEditFleet(depName) {
+  $('dep').value = depName;
+  syncDepotEntryForm();
+  setTab('entry');
+  window.scrollTo({ top: 400, behavior: 'smooth' });
+}
+
+// Save Sales & Issues Report
+async function saveReportData() {
+  try {
+    const d = $('date').value;
+    await api('PUT', '/api/report', {
+      date: d,
+      head: $('head').value,
+      today_sales: num($('st').value),
+      today_target: num($('stt').value),
+      mtd_sales: num($('sm').value),
+      mtd_target: num($('smt').value),
+      top_depot: $('top_depot').value,
+      low_depot: $('low_depot').value,
+      issues: $('iss').value
+    });
+    msg('Sales & challenges saved ✓', true);
+    calcAch();
+  } catch (e) {
+    msg(e.message);
+  }
+}
+
+// Format Date for WhatsApp
+function formatDateWhatsApp(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00');
+  if (isNaN(d)) return dateStr;
+  return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+// WhatsApp Report Generator (Exact match to User's Specification)
+function genReport() {
+  const head = $('head').value || 'Atikur';
+  const dateFormatted = formatDateWhatsApp($('date').value);
+  const st = num($('st').value), stt = num($('stt').value);
+  const sm = num($('sm').value), smt = num($('smt').value);
+  const topDep = $('top_depot').value || '—';
+  const lowDep = $('low_depot').value || '—';
+
+  const catTotals = getCategoryTotals();
+
+  // Total vehicles on road sum
+  let totVehiclesOnRoad = 0;
+  vehicles.forEach(v => { totVehiclesOnRoad += (v.on_road || 0); });
+
+  const L = [
+    `*Cluster Manager Daily Update*`,
+    ``,
+    `*Cluster Head:* ${head}`,
+    `*Date:* ${dateFormatted}`,
+    ``,
+    `*Key Points:*`,
+    `📈 *GT Frozen Sales*`,
+    `- Today: ${fmt(st)} (Target ${fmt(stt)} | Ach ${pct(st, stt)}%)`,
+    `- MTD: ${fmt(sm)} (Target ${fmt(smt)} | Ach ${pct(sm, smt)}%)`,
+    `- Top: ${topDep} | Low: ${lowDep}`,
+    ``,
+    `🚚 *Distribution (Category-wise)*`
+  ];
+
+  CATS.forEach(c => {
+    const x = catTotals[c];
+    L.push(`- ${c}: Orders ${fmt(x.o)} | Delivered ${fmt(x.v)} | Pending ${fmt(x.o - x.v)}`);
+  });
+
+  L.push(`- Total vehicle on road: ${totVehiclesOnRoad}`);
+
+  // Stock cover line: Frozen ___ | Chicken ___ | Egg ___ | Dairy ___ days
+  const coverParts = ['Frozen', 'Chicken', 'Egg', 'Dairy'].map(c => {
+    const x = catTotals[c];
+    const days = (x && x.a > 0) ? (x.s / x.a).toFixed(1) : '–';
+    return `${c} ${days}`;
+  });
+  L.push(`- Stock cover: ${coverParts.join(' | ')} days`);
+
+  L.push(``, `*Key Issue/ Challenges:*`);
+  const rawIssues = $('iss').value.split('\n').map(x => x.trim()).filter(Boolean);
+  if (!rawIssues.length) {
+    L.push(`1. None`);
+  } else {
+    rawIssues.forEach((issueText, idx) => {
+      // Remove manual numbering if user typed it
+      const clean = issueText.replace(/^\d+[\.\)]\s*/, '');
+      L.push(`${idx + 1}. ${clean}`);
+    });
+  }
+
+  $('out').value = L.join('\n');
+}
+
+function copyReport() {
+  const t = $('out');
+  if (!t.value) genReport();
+  t.select();
+  let ok = false;
+  try {
+    ok = navigator.clipboard ? (navigator.clipboard.writeText(t.value), true) : document.execCommand('copy');
+  } catch (e) {
+    try { ok = document.execCommand('copy'); } catch (x) {}
+  }
+  const btn = $('cpb');
+  btn.textContent = ok ? '✓ Copied!' : 'Select & Copy';
+  setTimeout(() => { btn.textContent = 'Copy to Clipboard'; }, 2500);
+}
+
+// ========================================================
+// BULK UPLOAD ENGINE (SheetJS + Text Tab Parser)
+// ========================================================
+function handleFileSelect(evt) {
+  const file = evt.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const data = new Uint8Array(e.target.result);
+      if (typeof XLSX === 'undefined') throw new Error('SheetJS library not loaded');
+      const workbook = XLSX.read(data, { type: 'array' });
+      const firstSheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[firstSheetName];
+      const jsonRows = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
+      processParsedJsonRows(jsonRows);
+    } catch (err) {
+      msg('Excel read error: ' + err.message);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// Drag & drop setup
+const dropZone = $('drop-zone');
+['dragenter', 'dragover'].forEach(name => {
+  dropZone.addEventListener(name, e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+});
+['dragleave', 'drop'].forEach(name => {
+  dropZone.addEventListener(name, e => { e.preventDefault(); dropZone.classList.remove('dragover'); });
+});
+dropZone.addEventListener('drop', e => {
+  const dt = e.dataTransfer;
+  const file = dt.files[0];
+  if (file) {
+    $('file-input').files = dt.files;
+    handleFileSelect({ target: { files: [file] } });
+  }
+});
+
+function parsePastedTable() {
+  const text = $('bulk-paste').value.trim();
+  if (!text) {
+    parsedBulkRows = [];
+    renderBulkPreview();
+    return;
+  }
+  const lines = text.split(/\r?\n/).filter(Boolean);
+  if (lines.length < 2) return;
+
+  const headerParts = lines[0].split('\t').map(x => x.trim().toLowerCase());
+  const rows = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cells = lines[i].split('\t');
+    const obj = {};
+    headerParts.forEach((h, idx) => { obj[h] = cells[idx] ? cells[idx].trim() : ''; });
+    rows.push(obj);
+  }
+  processParsedJsonRows(rows);
+}
+
+// Smart Column Matcher
+function detectField(obj, candidates) {
+  const keys = Object.keys(obj);
+  for (const c of candidates) {
+    const foundKey = keys.find(k => k.toLowerCase().replace(/[^a-z0-9]/g, '').includes(c));
+    if (foundKey) return obj[foundKey];
+  }
+  return null;
+}
+
+function processParsedJsonRows(rows) {
+  parsedBulkRows = [];
+  const knownDepots = deps.length ? deps : allowed();
+
+  rows.forEach((r, idx) => {
+    // 1. Detect Depot
+    const rawDepot = detectField(r, ['depot', 'location', 'warehouse', 'branch', 'ডিপো']);
+    const matchedDepot = knownDepots.find(d => lc(d) === lc(rawDepot)) || rawDepot;
+
+    // 2. Detect Category
+    const rawCat = detectField(r, ['category', 'cat', 'group', 'productgroup', 'itemgroup', 'ক্যাটাগরি']);
+    const matchedCat = CATS.find(c => lc(c) === lc(rawCat)) || (rawCat ? 'Others' : null);
+
+    // 3. Detect Numbers
+    const rawOrders = detectField(r, ['order', 'orders', 'orderqty', 'অর্ডার']);
+    const rawDelivered = detectField(r, ['delivered', 'delivery', 'challan', 'challanqty', 'ডেলিভারি']);
+    const rawStock = detectField(r, ['stock', 'closingstock', 'balance', 'qty', 'স্টক']);
+    const rawAvg = detectField(r, ['avgdaily', 'avgsale', 'dailysale', 'avg', 'runrate', 'গড়']);
+
+    if (matchedDepot) {
+      parsedBulkRows.push({
+        id: idx + 1,
+        depot: matchedDepot,
+        category: matchedCat || 'Frozen',
+        orders: rawOrders !== null && rawOrders !== '' ? num(rawOrders) : null,
+        delivered: rawDelivered !== null && rawDelivered !== '' ? num(rawDelivered) : null,
+        stock: rawStock !== null && rawStock !== '' ? num(rawStock) : null,
+        avg_daily: rawAvg !== null && rawAvg !== '' ? num(rawAvg) : null
+      });
+    }
+  });
+
+  renderBulkPreview();
+}
+
+function renderBulkPreview() {
+  $('parsed-count').textContent = parsedBulkRows.length;
+  $('btn-commit-bulk').disabled = parsedBulkRows.length === 0;
+  $('bulk-preview-wrap').classList.toggle('hid', parsedBulkRows.length === 0);
+
+  $('bulk-preview-tb').innerHTML = parsedBulkRows.slice(0, 50).map((r, i) => `
+    <tr>
+      <td>${i + 1}</td>
+      <td><b>${esc(r.depot)}</b></td>
+      <td>${esc(r.category)}</td>
+      <td class="num">${r.orders != null ? fmt(r.orders) : '—'}</td>
+      <td class="num">${r.delivered != null ? fmt(r.delivered) : '—'}</td>
+      <td class="num">${r.stock != null ? fmt(r.stock) : '—'}</td>
+      <td class="num">${r.avg_daily != null ? fmt(r.avg_daily) : '—'}</td>
+      <td><span class="badge badge-depot">Ready</span></td>
+    </tr>
+  `).join('');
+}
+
+async function processAndCommitBulk() {
+  if (!parsedBulkRows.length) return;
+  const d = $('date').value;
+  const mode = $('bulk-mode').value;
+
+  const payload = parsedBulkRows.map(r => {
+    const item = { depot: r.depot, category: r.category };
+    if (mode === 'all' || mode === 'orders') {
+      if (r.orders != null) item.orders = r.orders;
+      if (r.delivered != null) item.delivered = r.delivered;
+    }
+    if (mode === 'all' || mode === 'stock') {
+      if (r.stock != null) item.stock = r.stock;
+      if (r.avg_daily != null) item.avg_daily = r.avg_daily;
+    }
+    return item;
+  });
+
+  try {
+    const res = await api('POST', '/api/bulk/entries', { date: d, items: payload });
+    msg(`Bulk Upload Successful! Updated: ${res.updated} rows ✓`, true);
+    parsedBulkRows = [];
+    $('bulk-paste').value = '';
+    renderBulkPreview();
+    setTab('dash');
+    await loadAll(true);
+  } catch (e) {
+    msg('Bulk upload failed: ' + e.message);
+  }
+}
+
+// ========================================================
+// USER & ADMIN MANAGEMENT
+// ========================================================
+async function loadUsers() {
+  try {
+    const res = await api('GET', '/api/users');
+    users = res.users;
+    $('ub').innerHTML = users.map((u, i) => `
+      <tr>
+        <td><b>${esc(u.username)}</b></td>
+        <td><input id="un${i}" value="${esc(u.name)}" style="padding:4px 6px;"></td>
+        <td><input id="ug${i}" value="${esc(u.designation || '')}" style="padding:4px 6px;"></td>
+        <td><input id="um${i}" type="tel" value="${esc(u.mobile || '')}" style="padding:4px 6px;"></td>
+        <td>
+          <select id="ur${i}" style="padding:4px 6px;">
+            <option value="depot" ${u.role === 'depot' ? 'selected' : ''}>Depot</option>
+            <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>Admin</option>
+          </select>
+        </td>
+        <td><input id="ud${i}" value="${esc((u.depots || []).join(', '))}" style="padding:4px 6px;" placeholder="Gazipur, Savar"></td>
+        <td><input id="up${i}" placeholder="New PW" style="padding:4px 6px; width:90px;"></td>
+        <td>
+          <button class="sm" onclick="saveUser(${i})">Save</button>
+          ${u.id === me.id ? '' : `<button class="sm" style="color:var(--bad)" onclick="delUser(${i})">×</button>`}
+        </td>
+      </tr>
+    `).join('');
+    loadResets();
+  } catch (e) {
+    msg(e.message);
+  }
+}
+
+async function loadResets() {
+  try {
+    const res = await api('GET', '/api/resets');
+    const r = res.resets;
+    $('rqn').textContent = r.length ? `(${r.length} pending)` : '';
+    $('rq').innerHTML = r.length ? r.map(q => `
+      <div style="padding:8px; background:var(--bg); border-radius:6px; margin:4px 0; display:flex; justify-content:space-between; align-items:center;">
+        <div>
+          ${q.mobile_match ? '✅ Mobile matched' : '⚠️ Mobile mismatch'} · <b>${esc(q.username)}</b> (${esc(q.name)}) · Sent Mobile: ${esc(q.submitted)}
+        </div>
+        <button class="sm" onclick="dismissReset(${q.id})">Dismiss</button>
+      </div>
+    `).join('') : 'No pending reset requests.';
+  } catch (e) {}
+}
+
+async function dismissReset(id) {
+  try {
+    await api('DELETE', '/api/resets/' + id);
+    loadResets();
+  } catch (e) { msg(e.message); }
+}
+
+async function saveUser(idx) {
+  const u = users[idx];
+  try {
+    await api('PUT', '/api/users/' + u.id, {
+      name: $('un' + idx).value,
+      designation: $('ug' + idx).value,
+      mobile: $('um' + idx).value,
+      role: $('ur' + idx).value,
+      depots: $('ud' + idx).value,
+      password: $('up' + idx).value
+    });
+    msg('User updated ✓', true);
+    loadUsers();
+    loadAll(true);
+  } catch (e) { msg(e.message); }
+}
+
+async function delUser(idx) {
+  const u = users[idx];
+  if (!confirm(`Delete user ${u.username}?`)) return;
+  try {
+    await api('DELETE', '/api/users/' + u.id);
+    loadUsers();
+    loadAll(true);
+  } catch (e) { msg(e.message); }
+}
+
+async function addUser() {
+  try {
+    await api('POST', '/api/users', {
+      username: $('nu').value,
+      name: $('nn').value,
+      designation: $('ng').value,
+      mobile: $('nm').value,
+      role: $('nr').value,
+      depots: $('nd').value,
+      password: $('np').value
+    });
+    ['nu', 'nn', 'ng', 'nm', 'nd', 'np'].forEach(id => $(id).value = '');
+    msg('User created successfully ✓', true);
+    loadUsers();
+    loadAll(true);
+  } catch (e) { msg(e.message); }
+}
+
+// Auth Handlers
+async function doLogin() {
+  $('le').textContent = '';
+  try {
+    await api('POST', '/api/login', { username: $('lu').value, password: $('lp').value });
+    $('lp').value = '';
+    await boot();
+  } catch (e) { $('le').textContent = e.message; }
+}
+
+async function doLogout() {
+  try { await api('POST', '/api/logout', {}); } catch (e) {}
+  location.reload();
+}
+
+function showPw(on, forced = false) {
+  $('pw').classList.toggle('hid', !on);
+  $('main').classList.toggle('hid', !!forced && on);
+  $('pwn').classList.toggle('hid', !forced);
+  $('pwx').classList.toggle('hid', !!forced);
+  if (on) $('pc').focus();
+}
+
+async function savePw() {
+  try {
+    await api('POST', '/api/password', { current: $('pc').value, password: $('pn').value });
+    me.must_change = false;
+    $('pc').value = '';
+    $('pn').value = '';
+    showPw(false);
+    msg('Password updated successfully ✓', true);
+    await loadAll(true);
+  } catch (e) { msg(e.message); }
+}
+
+async function doForgot() {
+  const el = $('fe');
+  el.textContent = '';
+  try {
+    await api('POST', '/api/forgot', { username: $('fu').value, mobile: $('fm').value });
+    el.className = 'ok';
+    el.textContent = 'Request submitted. Admin will verify and reset.';
+  } catch (e) {
+    el.className = 'bad';
+    el.textContent = e.message;
+  }
+}
+
+// Start app
 boot();
-</script></body></html>
+</script>
+</body>
+</html>
