@@ -6,8 +6,8 @@ const cookieSession = require('cookie-session');
 const path = require('path');
 
 const prod = process.env.NODE_ENV === 'production';
-if (!process.env.DATABASE_URL) { console.error('DATABASE_URL set kora nai'); process.exit(1); }
-if (prod && !process.env.SESSION_SECRET) { console.error('SESSION_SECRET set kora nai'); process.exit(1); }
+if (!process.env.DATABASE_URL) { console.error('DATABASE_URL is not set'); process.exit(1); }
+if (prod && !process.env.SESSION_SECRET) { console.error('SESSION_SECRET is not set'); process.exit(1); }
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -22,10 +22,10 @@ app.use(cookieSession({
   maxAge: 12 * 60 * 60 * 1000, httpOnly: true, sameSite: 'lax', secure: prod
 }));
 
-// Mutating request shudhu JSON hole nibe (basic CSRF protection, sameSite cookie er sathe)
+// Mutating requests must be JSON (basic CSRF protection along with sameSite cookie)
 app.use((req, res, next) => {
   if (['POST', 'PUT', 'DELETE'].includes(req.method) && !req.is('application/json') && req.path.startsWith('/api/') && req.method !== 'DELETE')
-    return res.status(415).json({ error: 'JSON dorkar' });
+    return res.status(415).json({ error: 'JSON payload required' });
   next();
 });
 
@@ -73,26 +73,39 @@ async function init() {
       updated_at timestamptz not null default now(), unique(entry_date, depot));
     alter table reports add column if not exists top_depot text not null default '';
     alter table reports add column if not exists low_depot text not null default '';
+    alter table categories add column if not exists unit text not null default 'Qty';
   `);
 
-  // Default Categories initialization
-  const catCount = await pool.query('select count(*)::int n from categories');
-  if (catCount.rows[0].n === 0) {
-    const defaultCats = ['Frozen', 'Chicken', 'Egg', 'Dairy', 'Others'];
-    for (let i = 0; i < defaultCats.length; i++) {
-      await pool.query('insert into categories(name, display_order) values($1, $2) on conflict do nothing', [defaultCats[i], (i + 1) * 10]);
-    }
-    console.log('Default categories initialized');
+  // Unblock any users previously forced into must_change
+  await pool.query('update users set must_change = false where must_change = true');
+
+  // Categories initialization with standard Units of Measurement (UoM)
+  const defaultCats = [
+    { name: 'Frozen', unit: 'Pkt' },
+    { name: 'Chicken', unit: 'Kg' },
+    { name: 'Egg', unit: 'Pcs' },
+    { name: 'Dairy', unit: 'Ltr' },
+    { name: 'Tea', unit: 'Kg' },
+    { name: 'Sweets', unit: 'Kg' },
+    { name: 'Others', unit: 'Pcs' }
+  ];
+  for (let i = 0; i < defaultCats.length; i++) {
+    await pool.query(`
+      insert into categories(name, display_order, unit)
+      values($1, $2, $3)
+      on conflict (name) do update set unit = $3
+    `, [defaultCats[i].name, (i + 1) * 10, defaultCats[i].unit]);
   }
+  console.log('Categories & units initialized');
 
   // First admin initialization
   const c = await pool.query('select count(*)::int n from users');
   if (c.rows[0].n === 0) {
     const u = process.env.ADMIN_USERNAME || 'admin', p = process.env.ADMIN_PASSWORD;
-    if (!p || p.length < 8) { console.error('ADMIN_PASSWORD (minimum 8 character) set korun'); process.exit(1); }
-    await pool.query('insert into users(username,password_hash,name,role) values($1,$2,$3,$4)',
+    if (!p || p.length < 8) { console.error('ADMIN_PASSWORD (minimum 8 characters) is required'); process.exit(1); }
+    await pool.query('insert into users(username,password_hash,name,role,must_change) values($1,$2,$3,$4,false)',
       [lc(u), await bcrypt.hash(p, 10), 'Admin', 'admin']);
-    console.log('First admin toiri hoyeche:', lc(u));
+    console.log('First admin user created:', lc(u));
   }
 }
 
@@ -104,15 +117,13 @@ async function getAllCategories() {
 // ---------- auth ----------
 const fails = new Map();
 const auth = wrap(async (req, res, next) => {
-  if (!req.session.uid) return res.status(401).json({ error: 'Login korun' });
+  if (!req.session.uid) return res.status(401).json({ error: 'Please login to continue' });
   const r = await pool.query('select id,username,name,role,depots,mobile,designation,must_change from users where id=$1', [req.session.uid]);
-  if (!r.rows[0]) { req.session = null; return res.status(401).json({ error: 'Login korun' }); }
+  if (!r.rows[0]) { req.session = null; return res.status(401).json({ error: 'Please login to continue' }); }
   req.user = r.rows[0];
-  if (req.user.must_change && !['/api/me', '/api/password'].includes(req.originalUrl.split('?')[0]))
-    return res.status(403).json({ error: 'Age password change korun', must_change: true });
   next();
 });
-const admin = (req, res, next) => req.user.role === 'admin' ? next() : res.status(403).json({ error: 'Shudhu admin' });
+const admin = (req, res, next) => req.user.role === 'admin' ? next() : res.status(403).json({ error: 'Admin access required' });
 async function allDepots() {
   const r = await pool.query('select distinct unnest(depots) d from users order by 1');
   return r.rows.map(x => x.d);
@@ -123,46 +134,58 @@ const findDepot = (list, d) => list.find(x => lc(x) === lc(d));
 app.get('/healthz', (req, res) => res.send('ok'));
 
 app.post('/api/login', wrap(async (req, res) => {
-  const username = lc(req.body.username), password = String(req.body.password || '');
+  const username = lc(String(req.body.username || '').trim());
+  const password = String(req.body.password || '').trim();
+  if (!username || !password) return res.status(400).json({ error: 'Please enter both Username and Password' });
+
   const key = req.ip + '|' + username, f = fails.get(key);
-  if (f && f.n >= 8 && Date.now() - f.t < 15 * 60 * 1000) return res.status(429).json({ error: 'Onek bar vul. 15 minute pore chesta korun.' });
+  if (f && f.n >= 10 && Date.now() - f.t < 15 * 60 * 1000) {
+    return res.status(429).json({ error: 'Too many failed login attempts. Please try again after 15 minutes.' });
+  }
+
   const r = await pool.query('select * from users where username=$1', [username]);
   const ok = r.rows[0] && await bcrypt.compare(password, r.rows[0].password_hash);
-  if (!ok) { fails.set(key, { n: (f && Date.now() - f.t < 15 * 60 * 1000 ? f.n : 0) + 1, t: Date.now() }); return res.status(401).json({ error: 'Username ba password vul' }); }
+  if (!ok) {
+    fails.set(key, { n: (f && Date.now() - f.t < 15 * 60 * 1000 ? f.n : 0) + 1, t: Date.now() });
+    return res.status(401).json({ error: 'Invalid username or password' });
+  }
+
   fails.delete(key);
   req.session = { uid: r.rows[0].id };
   res.json({ ok: true });
 }));
+
 app.post('/api/logout', (req, res) => { req.session = null; res.json({ ok: true }); });
 app.get('/api/me', auth, (req, res) => res.json(req.user));
 app.get('/api/depots', auth, wrap(async (req, res) => res.json({ depots: await allDepots() })));
 
 // ---------- categories management (dynamic) ----------
 app.get('/api/categories', auth, wrap(async (req, res) => {
-  const r = await pool.query('select id, name, display_order from categories order by display_order, id');
+  const r = await pool.query('select id, name, display_order, coalesce(unit, \'Qty\') as unit from categories order by display_order, id');
   res.json({ categories: r.rows.map(x => x.name), details: r.rows });
 }));
 
 app.post('/api/categories', auth, admin, wrap(async (req, res) => {
   const name = String(req.body.name || '').trim();
-  if (!name || name.length > 50) return res.status(400).json({ error: 'Category name dorkar (max 50 characters)' });
+  const unit = String(req.body.unit || 'Qty').trim().slice(0, 20);
+  if (!name || name.length > 50) return res.status(400).json({ error: 'Category name is required (max 50 characters)' });
   try {
     const maxOrderRes = await pool.query('select coalesce(max(display_order), 0) + 10 as next_order from categories');
     const nextOrder = maxOrderRes.rows[0].next_order;
-    await pool.query('insert into categories(name, display_order) values($1, $2)', [name, nextOrder]);
-    res.json({ ok: true, name });
+    await pool.query('insert into categories(name, display_order, unit) values($1, $2, $3)', [name, nextOrder, unit]);
+    res.json({ ok: true, name, unit });
   } catch (e) {
-    if (e.code === '23505') return res.status(409).json({ error: 'Ei Category name ageii ache' });
+    if (e.code === '23505') return res.status(409).json({ error: 'Category name already exists' });
     throw e;
   }
 }));
 
 app.delete('/api/categories/:name', auth, admin, wrap(async (req, res) => {
   const name = String(req.params.name || '').trim();
-  if (!name) return res.status(400).json({ error: 'Category name dorkar' });
+  if (!name) return res.status(400).json({ error: 'Category name required' });
   const countRes = await pool.query('select count(*)::int n from entries where lower(category)=lower($1)', [name]);
   if (countRes.rows[0].n > 0) {
-    return res.status(400).json({ error: `Ei category te ${countRes.rows[0].n} ti entry ache, tai delete kora jabe na.` });
+    return res.status(400).json({ error: `Cannot delete: ${countRes.rows[0].n} entries exist for this category.` });
   }
   await pool.query('delete from categories where lower(name)=lower($1)', [name]);
   res.json({ ok: true });
@@ -171,7 +194,7 @@ app.delete('/api/categories/:name', auth, admin, wrap(async (req, res) => {
 // ---------- entries ----------
 app.get('/api/entries', auth, wrap(async (req, res) => {
   const d = String(req.query.date || '');
-  if (!DATE.test(d)) return res.status(400).json({ error: 'Date thik nai' });
+  if (!DATE.test(d)) return res.status(400).json({ error: 'Invalid date format' });
   const r = await pool.query(`select to_char(e.entry_date,'YYYY-MM-DD') date, e.depot, e.category, e.orders, e.delivered,
     e.stock::float8 stock, e.avg_daily::float8 avg_daily, e.updated_at, u.name "by"
     from entries e left join users u on u.id=e.updated_by where e.entry_date=$1 order by e.category, e.depot`, [d]);
@@ -180,17 +203,17 @@ app.get('/api/entries', auth, wrap(async (req, res) => {
 
 app.put('/api/entries', auth, wrap(async (req, res) => {
   const b = req.body, date = String(b.date || '');
-  if (!DATE.test(date)) return res.status(400).json({ error: 'Date thik nai' });
+  if (!DATE.test(date)) return res.status(400).json({ error: 'Invalid date format' });
   
   const allCats = await getAllCategories();
   const cat = allCats.find(c => lc(c) === lc(b.category));
-  if (!cat) return res.status(400).json({ error: 'Category thik nai' });
+  if (!cat) return res.status(400).json({ error: 'Invalid category' });
 
   const depot = findDepot(await allowedDepots(req.user), b.depot);
-  if (!depot) return res.status(403).json({ error: 'Ei depot e data dewar anumoti nai' });
+  if (!depot) return res.status(403).json({ error: 'You are not authorized for this depot' });
   const orders = nonNeg(b.orders), delivered = nonNeg(b.delivered), stock = nonNeg(b.stock), avg = nonNeg(b.avg_daily);
-  if ([orders, delivered, stock, avg].includes(null)) return res.status(400).json({ error: 'Number gula thik nai' });
-  if (delivered > orders) return res.status(400).json({ error: 'Delivered, Orders er cheye beshi hote pare na' });
+  if ([orders, delivered, stock, avg].includes(null)) return res.status(400).json({ error: 'Invalid numerical values' });
+  if (delivered > orders) return res.status(400).json({ error: 'Delivered quantity cannot exceed Orders' });
   await pool.query(`insert into entries(entry_date,depot,category,orders,delivered,stock,avg_daily,updated_by,updated_at)
     values($1,$2,$3,$4,$5,$6,$7,$8,now())
     on conflict(entry_date,depot,category) do update set orders=$4,delivered=$5,stock=$6,avg_daily=$7,updated_by=$8,updated_at=now()`,
@@ -200,9 +223,9 @@ app.put('/api/entries', auth, wrap(async (req, res) => {
 
 app.delete('/api/entries', auth, wrap(async (req, res) => {
   const { date, depot, category } = req.query;
-  if (!DATE.test(String(date || ''))) return res.status(400).json({ error: 'Date thik nai' });
+  if (!DATE.test(String(date || ''))) return res.status(400).json({ error: 'Invalid date format' });
   const d = findDepot(await allowedDepots(req.user), depot);
-  if (!d) return res.status(403).json({ error: 'Anumoti nai' });
+  if (!d) return res.status(403).json({ error: 'Unauthorized' });
   await pool.query('delete from entries where entry_date=$1 and depot=$2 and category=$3', [date, d, category]);
   res.json({ ok: true });
 }));
@@ -210,8 +233,8 @@ app.delete('/api/entries', auth, wrap(async (req, res) => {
 // ---------- bulk entries (Stock from Poloxy / Orders / Combined) ----------
 app.post('/api/bulk/entries', auth, wrap(async (req, res) => {
   const { date, items } = req.body;
-  if (!DATE.test(String(date || ''))) return res.status(400).json({ error: 'Date thik nai' });
-  if (!Array.isArray(items) || !items.length) return res.status(400).json({ error: 'Data list khali' });
+  if (!DATE.test(String(date || ''))) return res.status(400).json({ error: 'Invalid date format' });
+  if (!Array.isArray(items) || !items.length) return res.status(400).json({ error: 'Data list is empty' });
 
   const allowed = await allowedDepots(req.user);
   const allCats = await getAllCategories();
@@ -247,7 +270,7 @@ app.post('/api/bulk/entries', auth, wrap(async (req, res) => {
 // ---------- vehicles tracking ----------
 app.get('/api/vehicles', auth, wrap(async (req, res) => {
   const d = String(req.query.date || '');
-  if (!DATE.test(d)) return res.status(400).json({ error: 'Date thik nai' });
+  if (!DATE.test(d)) return res.status(400).json({ error: 'Invalid date format' });
   const r = await pool.query(`
     select to_char(v.entry_date,'YYYY-MM-DD') date, v.depot, v.total_vehicles, v.dispatched,
       v.on_road, v.delivered, v.notes, v.updated_at, u.name "by"
@@ -259,9 +282,9 @@ app.get('/api/vehicles', auth, wrap(async (req, res) => {
 
 app.put('/api/vehicles', auth, wrap(async (req, res) => {
   const b = req.body, date = String(b.date || '');
-  if (!DATE.test(date)) return res.status(400).json({ error: 'Date thik nai' });
+  if (!DATE.test(date)) return res.status(400).json({ error: 'Invalid date format' });
   const depot = findDepot(await allowedDepots(req.user), b.depot);
-  if (!depot) return res.status(403).json({ error: 'Ei depot e data dewar anumoti nai' });
+  if (!depot) return res.status(403).json({ error: 'You are not authorized for this depot' });
 
   const total = nonNeg(b.total_vehicles) || 0;
   const dispatched = nonNeg(b.dispatched) || 0;
@@ -280,8 +303,8 @@ app.put('/api/vehicles', auth, wrap(async (req, res) => {
 
 app.post('/api/bulk/vehicles', auth, wrap(async (req, res) => {
   const { date, items } = req.body;
-  if (!DATE.test(String(date || ''))) return res.status(400).json({ error: 'Date thik nai' });
-  if (!Array.isArray(items) || !items.length) return res.status(400).json({ error: 'Data list khali' });
+  if (!DATE.test(String(date || ''))) return res.status(400).json({ error: 'Invalid date format' });
+  if (!Array.isArray(items) || !items.length) return res.status(400).json({ error: 'Data list is empty' });
   const allowed = await allowedDepots(req.user);
   let updated = 0, skipped = 0;
   for (const it of items) {
@@ -306,7 +329,7 @@ app.post('/api/bulk/vehicles', auth, wrap(async (req, res) => {
 // ---------- sales & issues report (admin write) ----------
 app.get('/api/report', auth, wrap(async (req, res) => {
   const d = String(req.query.date || '');
-  if (!DATE.test(d)) return res.status(400).json({ error: 'Date thik nai' });
+  if (!DATE.test(d)) return res.status(400).json({ error: 'Invalid date format' });
   const r = await pool.query(`select head, today_sales::float8, today_target::float8, mtd_sales::float8, mtd_target::float8, top_depot, low_depot, issues
     from reports where report_date=$1`, [d]);
   res.json({ report: r.rows[0] || { head: 'Atikur', today_sales: 0, today_target: 0, mtd_sales: 0, mtd_target: 0, top_depot: '', low_depot: '', issues: '' } });
@@ -314,9 +337,9 @@ app.get('/api/report', auth, wrap(async (req, res) => {
 
 app.put('/api/report', auth, admin, wrap(async (req, res) => {
   const b = req.body, date = String(b.date || '');
-  if (!DATE.test(date)) return res.status(400).json({ error: 'Date thik nai' });
+  if (!DATE.test(date)) return res.status(400).json({ error: 'Invalid date format' });
   const n = [b.today_sales, b.today_target, b.mtd_sales, b.mtd_target].map(v => nonNeg(v || 0));
-  if (n.includes(null)) return res.status(400).json({ error: 'Number gula thik nai' });
+  if (n.includes(null)) return res.status(400).json({ error: 'Invalid numerical values' });
   await pool.query(`insert into reports(report_date,head,today_sales,today_target,mtd_sales,mtd_target,top_depot,low_depot,issues) values($1,$2,$3,$4,$5,$6,$7,$8,$9)
     on conflict(report_date) do update set head=$2,today_sales=$3,today_target=$4,mtd_sales=$5,mtd_target=$6,top_depot=$7,low_depot=$8,issues=$9`,
     [date, String(b.head || 'Atikur').slice(0, 100), ...n, String(b.top_depot || '').slice(0, 100), String(b.low_depot || '').slice(0, 100), String(b.issues || '').slice(0, 5000)]);
@@ -331,51 +354,62 @@ app.get('/api/users', auth, admin, wrap(async (req, res) => {
 }));
 
 app.post('/api/users', auth, admin, wrap(async (req, res) => {
-  const b = req.body, username = lc(b.username), password = String(b.password || '');
-  if (!USERNAME.test(username)) return res.status(400).json({ error: 'ID/Username: 3-30 ta english letter/number/._-' });
-  if (password.length < 8) return res.status(400).json({ error: 'Password minimum 8 character' });
+  const b = req.body;
+  const username = lc(String(b.username || '').trim().replace(/\s+/g, '_'));
+  const password = String(b.password || '').trim();
+
+  if (!USERNAME.test(username)) return res.status(400).json({ error: 'User ID must be 3-30 characters (letters, numbers, underscores, dots)' });
+  if (password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters long' });
   const mobile = normMobile(b.mobile);
-  if (mobile === null) return res.status(400).json({ error: 'Mobile number thik nai' });
+  if (mobile === null) return res.status(400).json({ error: 'Invalid mobile number format' });
   const role = b.role === 'admin' ? 'admin' : 'depot';
+
   try {
-    await pool.query('insert into users(username,password_hash,name,role,depots,mobile,designation,must_change) values($1,$2,$3,$4,$5,$6,$7,true)',
+    await pool.query('insert into users(username,password_hash,name,role,depots,mobile,designation,must_change) values($1,$2,$3,$4,$5,$6,$7,false)',
       [username, await bcrypt.hash(password, 10), String(b.name || '').slice(0, 80), role, cleanDepots(b.depots), mobile, String(b.designation || '').slice(0, 80)]);
-  } catch (e) { if (e.code === '23505') return res.status(409).json({ error: 'Ei ID ageii ache' }); throw e; }
+    fails.clear();
+  } catch (e) {
+    if (e.code === '23505') return res.status(409).json({ error: 'User ID already exists. Please choose a different ID.' });
+    throw e;
+  }
   res.json({ ok: true });
 }));
 
 app.put('/api/users/:id', auth, admin, wrap(async (req, res) => {
   const id = parseInt(req.params.id, 10), b = req.body;
-  if (!id) return res.status(400).json({ error: 'ID thik nai' });
+  if (!id) return res.status(400).json({ error: 'Invalid user ID' });
   const role = b.role === 'admin' ? 'admin' : 'depot';
-  if (id === req.user.id && role !== 'admin') return res.status(400).json({ error: 'Nijer admin role bondho kora jabe na' });
+  if (id === req.user.id && role !== 'admin') return res.status(400).json({ error: 'Cannot revoke your own admin role' });
   const mobile = normMobile(b.mobile);
-  if (mobile === null) return res.status(400).json({ error: 'Mobile number thik nai' });
-  const pw = String(b.password || '');
-  if (pw && pw.length < 8) return res.status(400).json({ error: 'Password minimum 8 character' });
+  if (mobile === null) return res.status(400).json({ error: 'Invalid mobile number format' });
+  const pw = String(b.password || '').trim();
+  if (pw && pw.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters long' });
+
   await pool.query('update users set name=$1, role=$2, depots=$3, mobile=$4, designation=$5 where id=$6',
     [String(b.name || '').slice(0, 80), role, cleanDepots(b.depots), mobile, String(b.designation || '').slice(0, 80), id]);
+  
   if (pw) {
-    await pool.query('update users set password_hash=$1, must_change=$2 where id=$3', [await bcrypt.hash(pw, 10), id !== req.user.id, id]);
+    await pool.query('update users set password_hash=$1, must_change=false where id=$2', [await bcrypt.hash(pw, 10), id]);
     await pool.query('delete from reset_requests where user_id=$1', [id]);
+    fails.clear();
   }
   res.json({ ok: true });
 }));
 
 app.delete('/api/users/:id', auth, admin, wrap(async (req, res) => {
   const id = parseInt(req.params.id, 10);
-  if (id === req.user.id) return res.status(400).json({ error: 'Nijeke delete kora jabe na' });
+  if (id === req.user.id) return res.status(400).json({ error: 'Cannot delete your own account' });
   await pool.query('delete from users where id=$1', [id]);
   res.json({ ok: true });
 }));
 
 // ---------- password: change, forgot, reset requests ----------
 app.post('/api/password', auth, wrap(async (req, res) => {
-  const cur = String(req.body.current || ''), nw = String(req.body.password || '');
-  if (nw.length < 8) return res.status(400).json({ error: 'Notun password minimum 8 character' });
-  if (nw === cur) return res.status(400).json({ error: 'Notun password ager ta theke alada hote hobe' });
+  const cur = String(req.body.current || '').trim(), nw = String(req.body.password || '').trim();
+  if (nw.length < 8) return res.status(400).json({ error: 'New password must be at least 8 characters long' });
+  if (nw === cur) return res.status(400).json({ error: 'New password must be different from current password' });
   const r = await pool.query('select password_hash from users where id=$1', [req.user.id]);
-  if (!(await bcrypt.compare(cur, r.rows[0].password_hash))) return res.status(400).json({ error: 'Ager password vul' });
+  if (!(await bcrypt.compare(cur, r.rows[0].password_hash))) return res.status(400).json({ error: 'Incorrect current password' });
   await pool.query('update users set password_hash=$1, must_change=false where id=$2', [await bcrypt.hash(nw, 10), req.user.id]);
   res.json({ ok: true });
 }));
@@ -383,10 +417,10 @@ app.post('/api/password', auth, wrap(async (req, res) => {
 const fAttempts = new Map();
 app.post('/api/forgot', wrap(async (req, res) => {
   const k = req.ip, a = fAttempts.get(k);
-  if (a && a.n >= 5 && Date.now() - a.t < 60 * 60 * 1000) return res.status(429).json({ error: 'Onek bar request. Pore chesta korun.' });
+  if (a && a.n >= 5 && Date.now() - a.t < 60 * 60 * 1000) return res.status(429).json({ error: 'Too many requests. Please try again later.' });
   fAttempts.set(k, { n: (a && Date.now() - a.t < 60 * 60 * 1000 ? a.n : 0) + 1, t: a && Date.now() - a.t < 60 * 60 * 1000 ? a.t : Date.now() });
-  const username = lc(req.body.username), mobile = normMobile(req.body.mobile);
-  if (!username || !mobile) return res.status(400).json({ error: 'ID ar mobile number dewa dorkar' });
+  const username = lc(String(req.body.username || '').trim()), mobile = normMobile(req.body.mobile);
+  if (!username || !mobile) return res.status(400).json({ error: 'User ID and mobile number are required' });
   const u = (await pool.query('select id, mobile from users where username=$1', [username])).rows[0];
   if (u) {
     const match = !!u.mobile && last10(u.mobile) === last10(mobile);
@@ -408,7 +442,7 @@ app.delete('/api/resets/:id', auth, admin, wrap(async (req, res) => {
 }));
 
 app.use(express.static(path.join(__dirname, 'public')));
-app.use((err, req, res, next) => { console.error(err); res.status(500).json({ error: 'Server error' }); });
+app.use((err, req, res, next) => { console.error(err); res.status(500).json({ error: 'Internal server error' }); });
 
 init().then(() => app.listen(process.env.PORT || 3000, () => console.log('Running on', process.env.PORT || 3000)))
   .catch(e => { console.error(e); process.exit(1); });
