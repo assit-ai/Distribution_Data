@@ -290,7 +290,10 @@ tr:hover td { background: rgba(0,0,0,0.015); }
     </div>
     <div style="margin-bottom:14px;">
       <label>Password</label>
-      <input id="lp" type="password" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
+      <div style="position:relative; display:flex; align-items:center;">
+        <input id="lp" type="password" autocomplete="current-password" style="padding-right:36px;" onkeydown="if(event.key==='Enter')doLogin()">
+        <button type="button" id="btn-toggle-pw" onclick="toggleLoginPw()" style="position:absolute; right:8px; background:none; border:none; cursor:pointer; font-size:16px; color:var(--mut); padding:4px;" title="Show/Hide Password">👁️</button>
+      </div>
     </div>
     <button class="p" style="width:100%; padding:10px;" onclick="doLogin()">Sign In</button>
     <div id="le" class="bad" style="margin-top:10px; font-size:12px; text-align:center;"></div>
@@ -1631,6 +1634,11 @@ async function addUser() {
 }
 
 // Auth Handlers
+function toggleLoginPw() {
+  const p = $('lp');
+  p.type = p.type === 'password' ? 'text' : 'password';
+}
+
 async function doLogin() {
   const u = ($('lu').value || '').trim();
   const p = ($('lp').value || '').trim();
