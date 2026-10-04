@@ -143,7 +143,7 @@ app.post('/api/login', wrap(async (req, res) => {
     return res.status(429).json({ error: 'Too many failed login attempts. Please try again after 15 minutes.' });
   }
 
-  const r = await pool.query('select * from users where username=$1', [username]);
+  const r = await pool.query('select * from users where lower(trim(username)) = lower(trim($1))', [username]);
   const ok = r.rows[0] && await bcrypt.compare(password, r.rows[0].password_hash);
   if (!ok) {
     fails.set(key, { n: (f && Date.now() - f.t < 15 * 60 * 1000 ? f.n : 0) + 1, t: Date.now() });
