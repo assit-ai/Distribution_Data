@@ -74,6 +74,14 @@ async function init() {
     alter table reports add column if not exists top_depot text not null default '';
     alter table reports add column if not exists low_depot text not null default '';
     alter table categories add column if not exists unit text not null default 'Qty';
+    alter table users add column if not exists categories text[] not null default '{}';
+    alter table depot_vehicles add column if not exists under_maintenance int not null default 0;
+    create table if not exists vehicle_dispatches(
+      id serial primary key, entry_date date not null, depot text not null,
+      vehicle_no text not null, dispatch_time text not null default '',
+      driver_name text not null default '', destination text not null default '',
+      status text not null default 'dispatched', notes text not null default '',
+      created_by int references users(id) on delete set null, created_at timestamptz not null default now());
   `);
 
   // Unblock any users previously forced into must_change
@@ -118,7 +126,7 @@ async function getAllCategories() {
 const fails = new Map();
 const auth = wrap(async (req, res, next) => {
   if (!req.session.uid) return res.status(401).json({ error: 'Please login to continue' });
-  const r = await pool.query('select id,username,name,role,depots,mobile,designation,must_change from users where id=$1', [req.session.uid]);
+  const r = await pool.query('select id,username,name,role,depots,categories,mobile,designation,must_change from users where id=$1', [req.session.uid]);
   if (!r.rows[0]) { req.session = null; return res.status(401).json({ error: 'Please login to continue' }); }
   req.user = r.rows[0];
   next();
@@ -128,7 +136,14 @@ async function allDepots() {
   const r = await pool.query('select distinct unnest(depots) d from users order by 1');
   return r.rows.map(x => x.d);
 }
-async function allowedDepots(u) { return u.role === 'admin' ? allDepots() : u.depots; }
+async function allowedDepots(u) { return u.role === 'admin' ? allDepots() : (u.depots || []); }
+async function allowedCategories(u) {
+  const all = await getAllCategories();
+  if (u.role === 'admin') return all;
+  if (!u.categories || !u.categories.length) return all;
+  const filtered = all.filter(c => u.categories.some(uc => lc(uc) === lc(c)));
+  return filtered.length ? filtered : all;
+}
 const findDepot = (list, d) => list.find(x => lc(x) === lc(d));
 
 app.get('/healthz', (req, res) => res.send('ok'));
@@ -196,9 +211,21 @@ app.delete('/api/categories/:name', auth, admin, wrap(async (req, res) => {
 app.get('/api/entries', auth, wrap(async (req, res) => {
   const d = String(req.query.date || '');
   if (!DATE.test(d)) return res.status(400).json({ error: 'Invalid date format' });
-  const r = await pool.query(`select to_char(e.entry_date,'YYYY-MM-DD') date, e.depot, e.category, e.orders, e.delivered,
+  
+  let query = `select to_char(e.entry_date,'YYYY-MM-DD') date, e.depot, e.category, e.orders, e.delivered,
     e.stock::float8 stock, e.avg_daily::float8 avg_daily, e.updated_at, u.name "by"
-    from entries e left join users u on u.id=e.updated_by where e.entry_date=$1 order by e.category, e.depot`, [d]);
+    from entries e left join users u on u.id=e.updated_by where e.entry_date=$1`;
+  const params = [d];
+  
+  if (req.user.role !== 'admin') {
+    const allowedD = (await allowedDepots(req.user)).map(lc);
+    const allowedC = (await allowedCategories(req.user)).map(lc);
+    query += ` and lower(e.depot) = any($2) and lower(e.category) = any($3)`;
+    params.push(allowedD, allowedC);
+  }
+  
+  query += ` order by e.category, e.depot`;
+  const r = await pool.query(query, params);
   res.json({ entries: r.rows });
 }));
 
@@ -206,12 +233,13 @@ app.put('/api/entries', auth, wrap(async (req, res) => {
   const b = req.body, date = String(b.date || '');
   if (!DATE.test(date)) return res.status(400).json({ error: 'Invalid date format' });
   
-  const allCats = await getAllCategories();
-  const cat = allCats.find(c => lc(c) === lc(b.category));
-  if (!cat) return res.status(400).json({ error: 'Invalid category' });
-
   const depot = findDepot(await allowedDepots(req.user), b.depot);
   if (!depot) return res.status(403).json({ error: 'You are not authorized for this depot' });
+
+  const allowedCats = await allowedCategories(req.user);
+  const cat = allowedCats.find(c => lc(c) === lc(b.category));
+  if (!cat) return res.status(403).json({ error: `You are not authorized for product category: ${b.category}` });
+
   const orders = nonNeg(b.orders), delivered = nonNeg(b.delivered), stock = nonNeg(b.stock), avg = nonNeg(b.avg_daily);
   if ([orders, delivered, stock, avg].includes(null)) return res.status(400).json({ error: 'Invalid numerical values' });
   if (delivered > orders) return res.status(400).json({ error: 'Delivered quantity cannot exceed Orders' });
@@ -226,7 +254,9 @@ app.delete('/api/entries', auth, wrap(async (req, res) => {
   const { date, depot, category } = req.query;
   if (!DATE.test(String(date || ''))) return res.status(400).json({ error: 'Invalid date format' });
   const d = findDepot(await allowedDepots(req.user), depot);
-  if (!d) return res.status(403).json({ error: 'Unauthorized' });
+  if (!d) return res.status(403).json({ error: 'Unauthorized depot' });
+  const allowedCats = await allowedCategories(req.user);
+  if (!allowedCats.some(c => lc(c) === lc(category))) return res.status(403).json({ error: 'Unauthorized category' });
   await pool.query('delete from entries where entry_date=$1 and depot=$2 and category=$3', [date, d, category]);
   res.json({ ok: true });
 }));
@@ -274,7 +304,7 @@ app.get('/api/vehicles', auth, wrap(async (req, res) => {
   if (!DATE.test(d)) return res.status(400).json({ error: 'Invalid date format' });
   const r = await pool.query(`
     select to_char(v.entry_date,'YYYY-MM-DD') date, v.depot, v.total_vehicles, v.dispatched,
-      v.on_road, v.delivered, v.notes, v.updated_at, u.name "by"
+      v.on_road, v.delivered, coalesce(v.under_maintenance, 0) as under_maintenance, v.notes, v.updated_at, u.name "by"
     from depot_vehicles v left join users u on u.id=v.updated_by
     where v.entry_date=$1 order by v.depot
   `, [d]);
@@ -291,14 +321,74 @@ app.put('/api/vehicles', auth, wrap(async (req, res) => {
   const dispatched = nonNeg(b.dispatched) || 0;
   const on_road = nonNeg(b.on_road) || 0;
   const delivered = nonNeg(b.delivered) || 0;
+  const maint = nonNeg(b.under_maintenance) || 0;
   const notes = String(b.notes || '').slice(0, 500);
 
   await pool.query(`
-    insert into depot_vehicles(entry_date, depot, total_vehicles, dispatched, on_road, delivered, notes, updated_by, updated_at)
-    values($1, $2, $3, $4, $5, $6, $7, $8, now())
+    insert into depot_vehicles(entry_date, depot, total_vehicles, dispatched, on_road, delivered, under_maintenance, notes, updated_by, updated_at)
+    values($1, $2, $3, $4, $5, $6, $7, $8, $9, now())
     on conflict(entry_date, depot) do update set
-      total_vehicles=$3, dispatched=$4, on_road=$5, delivered=$6, notes=$7, updated_by=$8, updated_at=now()
-  `, [date, depot, Math.round(total), Math.round(dispatched), Math.round(on_road), Math.round(delivered), notes, req.user.id]);
+      total_vehicles=$3, dispatched=$4, on_road=$5, delivered=$6, under_maintenance=$7, notes=$8, updated_by=$9, updated_at=now()
+  `, [date, depot, Math.round(total), Math.round(dispatched), Math.round(on_road), Math.round(delivered), Math.round(maint), notes, req.user.id]);
+  res.json({ ok: true });
+}));
+
+// ---------- individual vehicle dispatch logs ----------
+app.get('/api/dispatches', auth, wrap(async (req, res) => {
+  const d = String(req.query.date || '');
+  if (!DATE.test(d)) return res.status(400).json({ error: 'Invalid date format' });
+  let query = `select vd.id, to_char(vd.entry_date,'YYYY-MM-DD') date, vd.depot, vd.vehicle_no, vd.dispatch_time,
+    vd.driver_name, vd.destination, vd.status, vd.notes, vd.created_at, u.name "by"
+    from vehicle_dispatches vd left join users u on u.id=vd.created_by
+    where vd.entry_date=$1`;
+  const params = [d];
+  if (req.user.role !== 'admin') {
+    const allowedD = (await allowedDepots(req.user)).map(lc);
+    query += ` and lower(vd.depot) = any($2)`;
+    params.push(allowedD);
+  }
+  query += ` order by vd.depot, vd.dispatch_time, vd.id`;
+  const r = await pool.query(query, params);
+  res.json({ dispatches: r.rows });
+}));
+
+app.post('/api/dispatches', auth, wrap(async (req, res) => {
+  const b = req.body, date = String(b.date || '');
+  if (!DATE.test(date)) return res.status(400).json({ error: 'Invalid date format' });
+  const depot = findDepot(await allowedDepots(req.user), b.depot);
+  if (!depot) return res.status(403).json({ error: 'You are not authorized for this depot' });
+  const vehicle_no = String(b.vehicle_no || '').trim().slice(0, 50);
+  if (!vehicle_no) return res.status(400).json({ error: 'Vehicle registration number is required' });
+  const dispatch_time = String(b.dispatch_time || '').trim().slice(0, 30);
+  const driver_name = String(b.driver_name || '').trim().slice(0, 100);
+  const destination = String(b.destination || '').trim().slice(0, 150);
+  const status = String(b.status || 'dispatched').trim().slice(0, 30);
+  const notes = String(b.notes || '').trim().slice(0, 300);
+
+  const r = await pool.query(`
+    insert into vehicle_dispatches(entry_date, depot, vehicle_no, dispatch_time, driver_name, destination, status, notes, created_by)
+    values($1, $2, $3, $4, $5, $6, $7, $8, $9) returning id
+  `, [date, depot, vehicle_no, dispatch_time, driver_name, destination, status, notes, req.user.id]);
+
+  // Sync count in depot_vehicles
+  const countRes = await pool.query('select count(*)::int n from vehicle_dispatches where entry_date=$1 and lower(depot)=lower($2)', [date, depot]);
+  await pool.query(`
+    insert into depot_vehicles(entry_date, depot, dispatched, updated_by, updated_at)
+    values($1, $2, $3, $4, now())
+    on conflict(entry_date, depot) do update set dispatched = greatest(depot_vehicles.dispatched, $3), updated_at = now()
+  `, [date, depot, countRes.rows[0].n, req.user.id]);
+
+  res.json({ ok: true, id: r.rows[0].id });
+}));
+
+app.delete('/api/dispatches/:id', auth, wrap(async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!id) return res.status(400).json({ error: 'Invalid dispatch ID' });
+  const dRes = await pool.query('select * from vehicle_dispatches where id=$1', [id]);
+  if (!dRes.rows[0]) return res.status(404).json({ error: 'Dispatch record not found' });
+  const depot = findDepot(await allowedDepots(req.user), dRes.rows[0].depot);
+  if (!depot) return res.status(403).json({ error: 'Unauthorized' });
+  await pool.query('delete from vehicle_dispatches where id=$1', [id]);
   res.json({ ok: true });
 }));
 
@@ -315,13 +405,14 @@ app.post('/api/bulk/vehicles', auth, wrap(async (req, res) => {
     const dispatched = Math.round(nonNeg(it.dispatched) || 0);
     const on_road = Math.round(nonNeg(it.on_road) || 0);
     const delivered = Math.round(nonNeg(it.delivered) || 0);
+    const maint = Math.round(nonNeg(it.under_maintenance) || 0);
     const notes = String(it.notes || '').slice(0, 500);
     await pool.query(`
-      insert into depot_vehicles(entry_date, depot, total_vehicles, dispatched, on_road, delivered, notes, updated_by, updated_at)
-      values($1, $2, $3, $4, $5, $6, $7, $8, now())
+      insert into depot_vehicles(entry_date, depot, total_vehicles, dispatched, on_road, delivered, under_maintenance, notes, updated_by, updated_at)
+      values($1, $2, $3, $4, $5, $6, $7, $8, $9, now())
       on conflict(entry_date, depot) do update set
-        total_vehicles=$3, dispatched=$4, on_road=$5, delivered=$6, notes=$7, updated_by=$8, updated_at=now()
-    `, [date, depot, total, dispatched, on_road, delivered, notes, req.user.id]);
+        total_vehicles=$3, dispatched=$4, on_road=$5, delivered=$6, under_maintenance=$7, notes=$8, updated_by=$9, updated_at=now()
+    `, [date, depot, total, dispatched, on_road, delivered, maint, notes, req.user.id]);
     updated++;
   }
   res.json({ ok: true, updated, skipped });
@@ -350,7 +441,7 @@ app.put('/api/report', auth, admin, wrap(async (req, res) => {
 // ---------- user management (admin) ----------
 const USERNAME = /^[a-z0-9_.-]{3,30}$/;
 app.get('/api/users', auth, admin, wrap(async (req, res) => {
-  const r = await pool.query('select id,username,name,role,depots,mobile,designation from users order by role, name, username');
+  const r = await pool.query('select id,username,name,role,depots,categories,mobile,designation from users order by role, name, username');
   res.json({ users: r.rows });
 }));
 
@@ -366,8 +457,8 @@ app.post('/api/users', auth, admin, wrap(async (req, res) => {
   const role = b.role === 'admin' ? 'admin' : 'depot';
 
   try {
-    await pool.query('insert into users(username,password_hash,name,role,depots,mobile,designation,must_change) values($1,$2,$3,$4,$5,$6,$7,false)',
-      [username, await bcrypt.hash(password, 10), String(b.name || '').slice(0, 80), role, cleanDepots(b.depots), mobile, String(b.designation || '').slice(0, 80)]);
+    await pool.query('insert into users(username,password_hash,name,role,depots,categories,mobile,designation,must_change) values($1,$2,$3,$4,$5,$6,$7,$8,false)',
+      [username, await bcrypt.hash(password, 10), String(b.name || '').slice(0, 80), role, cleanDepots(b.depots), cleanDepots(b.categories), mobile, String(b.designation || '').slice(0, 80)]);
     fails.clear();
   } catch (e) {
     if (e.code === '23505') return res.status(409).json({ error: 'User ID already exists. Please choose a different ID.' });
@@ -386,8 +477,8 @@ app.put('/api/users/:id', auth, admin, wrap(async (req, res) => {
   const pw = String(b.password || '').trim();
   if (pw && pw.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters long' });
 
-  await pool.query('update users set name=$1, role=$2, depots=$3, mobile=$4, designation=$5 where id=$6',
-    [String(b.name || '').slice(0, 80), role, cleanDepots(b.depots), mobile, String(b.designation || '').slice(0, 80), id]);
+  await pool.query('update users set name=$1, role=$2, depots=$3, categories=$4, mobile=$5, designation=$6 where id=$7',
+    [String(b.name || '').slice(0, 80), role, cleanDepots(b.depots), cleanDepots(b.categories), mobile, String(b.designation || '').slice(0, 80), id]);
   
   if (pw) {
     await pool.query('update users set password_hash=$1, must_change=false where id=$2', [await bcrypt.hash(pw, 10), id]);
