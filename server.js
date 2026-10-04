@@ -16,6 +16,15 @@ const pool = new Pool({
 
 const app = express();
 app.set('trust proxy', 1);
+
+// Lightweight health check & keep-alive ping endpoints (Zero DB load, fast HTTP 200)
+app.get(['/healthz', '/ping', '/api/health'], (req, res) => {
+  res.status(200).json({ status: 'ok', uptime: Math.floor(process.uptime()), timestamp: Date.now() });
+});
+app.head(['/healthz', '/ping', '/api/health'], (req, res) => {
+  res.status(200).end();
+});
+
 app.use(express.json({ limit: '2mb' }));
 app.use(cookieSession({
   name: 'dup', keys: [process.env.SESSION_SECRET || 'dev-only-secret'],
@@ -82,6 +91,12 @@ async function init() {
       driver_name text not null default '', destination text not null default '',
       status text not null default 'dispatched', notes text not null default '',
       created_by int references users(id) on delete set null, created_at timestamptz not null default now());
+    create table if not exists registered_vans(
+      id serial primary key, depot text not null,
+      vehicle_no text not null, driver_name text not null default '',
+      driver_mobile text not null default '', vehicle_type text not null default 'Pickup Van',
+      status text not null default 'active', created_at timestamptz not null default now(),
+      unique(depot, vehicle_no));
   `);
 
   // Unblock any users previously forced into must_change
@@ -319,9 +334,9 @@ app.put('/api/vehicles', auth, wrap(async (req, res) => {
 
   const total = nonNeg(b.total_vehicles) || 0;
   const dispatched = nonNeg(b.dispatched) || 0;
-  const on_road = nonNeg(b.on_road) || 0;
   const delivered = nonNeg(b.delivered) || 0;
   const maint = nonNeg(b.under_maintenance) || 0;
+  const on_road = b.on_road != null && b.on_road !== '' ? (nonNeg(b.on_road) || 0) : Math.max(0, Math.round(total) - Math.round(delivered) - Math.round(maint));
   const notes = String(b.notes || '').slice(0, 500);
 
   await pool.query(`
@@ -392,6 +407,81 @@ app.delete('/api/dispatches/:id', auth, wrap(async (req, res) => {
   res.json({ ok: true });
 }));
 
+// ---------- registered vans (fleet enlistment by depot) ----------
+app.get('/api/registered-vans', auth, wrap(async (req, res) => {
+  let query = `select id, depot, vehicle_no, driver_name, driver_mobile, vehicle_type, status, created_at from registered_vans`;
+  const params = [];
+  if (req.user.role !== 'admin') {
+    const allowedD = (await allowedDepots(req.user)).map(lc);
+    query += ` where lower(depot) = any($1)`;
+    params.push(allowedD);
+  } else if (req.query.depot) {
+    query += ` where lower(depot) = lower($1)`;
+    params.push(String(req.query.depot).trim());
+  }
+  query += ` order by depot, vehicle_no`;
+  const r = await pool.query(query, params);
+  res.json({ vans: r.rows });
+}));
+
+app.post('/api/registered-vans', auth, admin, wrap(async (req, res) => {
+  const b = req.body;
+  const depot = String(b.depot || '').trim();
+  const vehicle_no = String(b.vehicle_no || '').trim().toUpperCase();
+  if (!depot) return res.status(400).json({ error: 'Depot is required' });
+  if (!vehicle_no) return res.status(400).json({ error: 'Vehicle registration number is required' });
+  const driver_name = String(b.driver_name || '').trim().slice(0, 100);
+  const driver_mobile = String(b.driver_mobile || '').trim().slice(0, 30);
+  const vehicle_type = String(b.vehicle_type || 'Pickup Van').trim().slice(0, 50);
+  const status = String(b.status || 'active').trim().slice(0, 30);
+
+  const r = await pool.query(`
+    insert into registered_vans(depot, vehicle_no, driver_name, driver_mobile, vehicle_type, status)
+    values($1, $2, $3, $4, $5, $6)
+    on conflict(depot, vehicle_no) do update set
+      driver_name = excluded.driver_name,
+      driver_mobile = excluded.driver_mobile,
+      vehicle_type = excluded.vehicle_type,
+      status = excluded.status
+    returning id
+  `, [depot, vehicle_no, driver_name, driver_mobile, vehicle_type, status]);
+  res.json({ ok: true, id: r.rows[0].id });
+}));
+
+app.delete('/api/registered-vans/:id', auth, admin, wrap(async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!id) return res.status(400).json({ error: 'Invalid van ID' });
+  await pool.query('delete from registered_vans where id=$1', [id]);
+  res.json({ ok: true });
+}));
+
+app.post('/api/bulk/registered-vans', auth, admin, wrap(async (req, res) => {
+  const { items } = req.body;
+  if (!Array.isArray(items) || !items.length) return res.status(400).json({ error: 'No van records provided' });
+  let saved = 0, skipped = 0;
+  for (const it of items) {
+    const depot = String(it.depot || '').trim();
+    const vehicle_no = String(it.vehicle_no || it.reg_no || it.vehicle_reg_no || '').trim().toUpperCase();
+    if (!depot || !vehicle_no) { skipped++; continue; }
+    const driver_name = String(it.driver_name || it.driver || '').trim().slice(0, 100);
+    const driver_mobile = String(it.driver_mobile || it.mobile || '').trim().slice(0, 30);
+    const vehicle_type = String(it.vehicle_type || it.type || 'Pickup Van').trim().slice(0, 50);
+    const status = String(it.status || 'active').trim().slice(0, 30);
+
+    await pool.query(`
+      insert into registered_vans(depot, vehicle_no, driver_name, driver_mobile, vehicle_type, status)
+      values($1, $2, $3, $4, $5, $6)
+      on conflict(depot, vehicle_no) do update set
+        driver_name = excluded.driver_name,
+        driver_mobile = excluded.driver_mobile,
+        vehicle_type = excluded.vehicle_type,
+        status = excluded.status
+    `, [depot, vehicle_no, driver_name, driver_mobile, vehicle_type, status]);
+    saved++;
+  }
+  res.json({ ok: true, saved, skipped });
+}));
+
 app.post('/api/bulk/vehicles', auth, wrap(async (req, res) => {
   const { date, items } = req.body;
   if (!DATE.test(String(date || ''))) return res.status(400).json({ error: 'Invalid date format' });
@@ -403,9 +493,9 @@ app.post('/api/bulk/vehicles', auth, wrap(async (req, res) => {
     if (!depot) { skipped++; continue; }
     const total = Math.round(nonNeg(it.total_vehicles) || 0);
     const dispatched = Math.round(nonNeg(it.dispatched) || 0);
-    const on_road = Math.round(nonNeg(it.on_road) || 0);
     const delivered = Math.round(nonNeg(it.delivered) || 0);
     const maint = Math.round(nonNeg(it.under_maintenance) || 0);
+    const on_road = it.on_road != null && it.on_road !== '' ? Math.round(nonNeg(it.on_road) || 0) : Math.max(0, total - delivered - maint);
     const notes = String(it.notes || '').slice(0, 500);
     await pool.query(`
       insert into depot_vehicles(entry_date, depot, total_vehicles, dispatched, on_road, delivered, under_maintenance, notes, updated_by, updated_at)
@@ -536,5 +626,34 @@ app.delete('/api/resets/:id', auth, admin, wrap(async (req, res) => {
 app.use(express.static(path.join(__dirname, 'public')));
 app.use((err, req, res, next) => { console.error(err); res.status(500).json({ error: 'Internal server error' }); });
 
-init().then(() => app.listen(process.env.PORT || 3000, () => console.log('Running on', process.env.PORT || 3000)))
-  .catch(e => { console.error(e); process.exit(1); });
+// Keep-Alive Self-Ping Daemon for Render Free Tier (pings every 10 mins to prevent idle spin-down)
+function startKeepAlive() {
+  const externalUrl = process.env.RENDER_EXTERNAL_URL || process.env.APP_URL;
+  if (!externalUrl) {
+    console.log('[Keep-Alive] RENDER_EXTERNAL_URL / APP_URL not set; skipping internal self-ping.');
+    return;
+  }
+  const pingUrl = `${externalUrl.replace(/\/+$/, '')}/ping`;
+  const intervalMs = 10 * 60 * 1000; // 10 minutes (Render spins down after 15 mins)
+
+  console.log(`[Keep-Alive] Initialized self-ping daemon targeting ${pingUrl} every 10 minutes`);
+
+  setInterval(async () => {
+    try {
+      const res = await fetch(pingUrl, {
+        headers: { 'User-Agent': 'Render-Self-Ping/1.0' }
+      });
+      console.log(`[Keep-Alive] Self-ping status: ${res.status}`);
+    } catch (err) {
+      console.warn(`[Keep-Alive] Self-ping failed:`, err.message);
+    }
+  }, intervalMs);
+}
+
+init().then(() => {
+  const port = process.env.PORT || 3000;
+  app.listen(port, () => {
+    console.log('Running on', port);
+    startKeepAlive();
+  });
+}).catch(e => { console.error(e); process.exit(1); });

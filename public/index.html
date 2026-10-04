@@ -365,18 +365,22 @@ tr:hover td { background: rgba(0,0,0,0.015); }
       <h1 style="font-size:20px; font-weight:700; color:var(--ac)">Distribution Portal</h1>
       <p style="font-size:13px; color:var(--mut)">Cluster Daily Update & Fleet Tracking</p>
     </div>
-    <div style="margin-bottom:10px;">
-      <label>User ID / Username</label>
-      <input id="lu" autocomplete="username" autocapitalize="none" placeholder="e.g. admin or depot ID">
-    </div>
-    <div style="margin-bottom:14px;">
-      <label>Password</label>
-      <div style="position:relative; display:flex; align-items:center;">
-        <input id="lp" type="password" autocomplete="current-password" style="padding-right:36px;" onkeydown="if(event.key==='Enter')doLogin()">
-        <button type="button" id="btn-toggle-pw" onclick="toggleLoginPw()" style="position:absolute; right:8px; background:none; border:none; cursor:pointer; font-size:16px; color:var(--mut); padding:4px;" title="Show/Hide Password">👁️</button>
+    
+    <form id="login-form" method="post" action="/api/login" onsubmit="doLogin(event)" autocomplete="on">
+      <div style="margin-bottom:10px;">
+        <label for="lu">User ID / Username</label>
+        <input id="lu" name="username" list="user-id-suggestions" autocomplete="username" autocapitalize="none" placeholder="e.g. admin or depot ID" required>
+        <datalist id="user-id-suggestions"></datalist>
       </div>
-    </div>
-    <button class="p" style="width:100%; padding:10px;" onclick="doLogin()">Sign In</button>
+      <div style="margin-bottom:14px;">
+        <label for="lp">Password</label>
+        <div style="position:relative; display:flex; align-items:center;">
+          <input id="lp" name="password" type="password" autocomplete="current-password" style="padding-right:36px;" required>
+          <button type="button" id="btn-toggle-pw" onclick="toggleLoginPw()" style="position:absolute; right:8px; background:none; border:none; cursor:pointer; font-size:16px; color:var(--mut); padding:4px;" title="Show/Hide Password">👁️</button>
+        </div>
+      </div>
+      <button type="submit" class="p" style="width:100%; padding:10px;">Sign In</button>
+    </form>
     <div id="le" class="bad" style="margin-top:10px; font-size:12px; text-align:center;"></div>
     
     <div style="margin-top:16px; text-align:center;">
@@ -415,14 +419,16 @@ tr:hover td { background: rgba(0,0,0,0.015); }
   <div id="pw" class="card hid">
     <div class="card-title">🔐 Set New Password</div>
     <div id="pwn" class="sub" style="margin-bottom:10px;">First time login detected. Please set a secure password (min 8 characters).</div>
-    <div class="g">
-      <div><label>Current Password</label><input id="pc" type="password"></div>
-      <div><label>New Password (min 8)</label><input id="pn" type="password"></div>
-    </div>
-    <div class="btn-row">
-      <button class="p" onclick="savePw()">Update Password</button>
-      <button id="pwx" onclick="showPw(false)">Cancel</button>
-    </div>
+    <form id="pw-form" onsubmit="savePw(event)">
+      <div class="g">
+        <div><label for="pc">Current Password</label><input id="pc" name="current-password" type="password" autocomplete="current-password" required></div>
+        <div><label for="pn">New Password (min 8)</label><input id="pn" name="new-password" type="password" autocomplete="new-password" required></div>
+      </div>
+      <div class="btn-row" style="margin-top:12px;">
+        <button type="submit" class="p">Update Password</button>
+        <button type="button" id="pwx" onclick="showPw(false)">Cancel</button>
+      </div>
+    </form>
   </div>
 
   <div id="main">
@@ -431,6 +437,7 @@ tr:hover td { background: rgba(0,0,0,0.015); }
       <button class="tab-btn active adm" onclick="setTab('dash')">📊 Overview & Report</button>
       <button class="tab-btn" onclick="setTab('entry')">📝 Daily Entry</button>
       <button class="tab-btn adm" onclick="setTab('fleet')">🚚 Dispatched Vans & Fleet</button>
+      <button class="tab-btn adm" onclick="setTab('vanreg')">🚐 Van Registration (Bulk)</button>
       <button class="tab-btn adm" onclick="setTab('bulk')">⚡ Bulk Upload (ERP/Excel)</button>
       <button class="tab-btn adm" onclick="setTab('admin')">👥 Users & Categories</button>
     </div>
@@ -439,24 +446,33 @@ tr:hover td { background: rgba(0,0,0,0.015); }
     <!-- TAB 1: EXECUTIVE DASHBOARD & REPORT -->
     <!-- ========================================== -->
     <div id="tab-dash" class="adm">
-      <!-- KPI Metric Cards (Ordered: 1. Today GT Frozen Sales -> 2. Dispatched Vans -> 3. Pending Deliveries -> 4. Under Maintenance -> 5. Depots Submitted) -->
+      <!-- KPI Metric Cards (All with Clickable Hyperlink Drill-downs) -->
       <div class="kpi-grid">
-        <!-- 1. Today GT Frozen Sales -->
-        <div class="kpi-card">
-          <div class="kpi-label">Today GT Frozen Sales</div>
+        <!-- 1. Today GT Frozen Sales (Clickable Hyperlink to Sales Modal) -->
+        <div class="kpi-card kpi-clickable" onclick="openSalesModal()" title="Click to view Today GT Frozen Sales, Target achievement & MTD performance">
+          <div class="kpi-label">Today GT Frozen Sales 🔍</div>
           <div class="kpi-val" id="kpi-sales">0</div>
           <div class="kpi-sub" id="kpi-sales-ach">Target: 0 (Ach 0%)</div>
+          <div class="kpi-link-hint">🔗 View sales performance →</div>
         </div>
 
-        <!-- 2. Dispatched Vans (Clickable Hyperlink to Drill-down Log) -->
-        <div class="kpi-card kpi-clickable" onclick="openDispatchesModal()" title="Click to view dispatched vans log (depot, vehicle no, dispatch time)">
+        <!-- 2. Vans On Road (Formula: Total Assigned - Delivery Done - Under Maint) (Clickable Hyperlink) -->
+        <div class="kpi-card kpi-clickable" onclick="openOnRoadModal()" title="Click to view Vans On Road active fleet breakdown">
+          <div class="kpi-label">Vans On Road 🔍</div>
+          <div class="kpi-val" id="kpi-onroad" style="color:var(--ac)">0</div>
+          <div class="kpi-sub" id="kpi-onroad-sub">Total (0) - Done (0) - Maint (0)</div>
+          <div class="kpi-link-hint">🔗 View on-road fleet →</div>
+        </div>
+
+        <!-- 3. Dispatched Vans (Clickable Hyperlink to Live Log) -->
+        <div class="kpi-card kpi-clickable" onclick="openDispatchesModal()" title="Click to view dispatched vans departure log (depot, vehicle reg, time, driver)">
           <div class="kpi-label">Dispatched Vans 🔍</div>
-          <div class="kpi-val" id="kpi-disp" style="color:var(--ac)">0</div>
-          <div class="kpi-sub" id="kpi-disp-sub">Active On Road: 0</div>
+          <div class="kpi-val" id="kpi-disp" style="color:var(--primary)">0</div>
+          <div class="kpi-sub" id="kpi-disp-sub">Active Fleet Dispatches</div>
           <div class="kpi-link-hint">🔗 View live dispatch log →</div>
         </div>
 
-        <!-- 3. Pending Deliveries (Clickable Hyperlink to Pending Breakdown) -->
+        <!-- 4. Pending Deliveries (Clickable Hyperlink to Pending Breakdown) -->
         <div class="kpi-card kpi-clickable" onclick="openPendingModal()" title="Click to view pending deliveries breakdown by depot & category">
           <div class="kpi-label">Pending Deliveries 🔍</div>
           <div class="kpi-val" id="kpi-pending" style="color:var(--warn)">0</div>
@@ -464,18 +480,20 @@ tr:hover td { background: rgba(0,0,0,0.015); }
           <div class="kpi-link-hint">🔗 View pending breakdown →</div>
         </div>
 
-        <!-- 4. Under Maintenance (Replaced Vehicles on Road) -->
-        <div class="kpi-card">
-          <div class="kpi-label">Under Maintenance</div>
+        <!-- 5. Under Maintenance (Clickable Hyperlink to Workshop Log) -->
+        <div class="kpi-card kpi-clickable" onclick="openMaintModal()" title="Click to view vehicles under maintenance, workshop repairs & breakdown status">
+          <div class="kpi-label">Under Maintenance 🔍</div>
           <div class="kpi-val" id="kpi-maint" style="color:var(--bad)">0</div>
           <div class="kpi-sub" id="kpi-maint-sub">Workshop / Breakdown</div>
+          <div class="kpi-link-hint">🔗 View workshop log →</div>
         </div>
 
-        <!-- 5. Depots Submitted -->
-        <div class="kpi-card">
-          <div class="kpi-label">Depots Submitted</div>
+        <!-- 6. Depots Submitted (Clickable Hyperlink to Depots Status) -->
+        <div class="kpi-card kpi-clickable" onclick="openDepotsModal()" title="Click to view all depots submission status & checklist">
+          <div class="kpi-label">Depots Submitted 🔍</div>
           <div class="kpi-val" id="kpi-depots">0 / 0</div>
           <div class="kpi-sub" id="kpi-depots-status">Waiting for entries</div>
+          <div class="kpi-link-hint">🔗 View submission status →</div>
         </div>
       </div>
 
@@ -582,9 +600,8 @@ tr:hover td { background: rgba(0,0,0,0.015); }
         <div class="g">
           <div><label>Selected Depot</label><input id="v_depot_name" readonly style="font-weight:700"></div>
           <div><label>Total Vans Assigned</label><input id="v_total" type="number" min="0" value="0"></div>
-          <div><label>Vans Dispatched</label><input id="v_disp" type="number" min="0" value="0" oninput="autoCalcOnRoad()"></div>
-          <div><label>Delivery Completed</label><input id="v_done" type="number" min="0" value="0" oninput="autoCalcOnRoad()"></div>
-          <div><label>Vans On Road (Active)</label><input id="v_onroad" type="number" min="0" value="0" style="color:var(--ac); font-weight:700"></div>
+          <div><label>Vans Dispatched</label><input id="v_disp" type="number" min="0" value="0"></div>
+          <div><label>Delivery Completed</label><input id="v_done" type="number" min="0" value="0"></div>
           <div><label>Under Maintenance</label><input id="v_maint" type="number" min="0" value="0" style="color:var(--bad); font-weight:700"></div>
         </div>
         <div style="margin-top:10px;">
@@ -593,16 +610,21 @@ tr:hover td { background: rgba(0,0,0,0.015); }
         </div>
       </div>
 
-      <!-- Register & Log Dispatched Van (Vehicle No, Time, Driver) -->
+      <!-- Register & Log Dispatched Van (Vehicle Dropdown from Enlisted Fleet, Departure Time, Driver) -->
       <div class="card">
         <div class="card-header">
-          <div class="card-title">🚐 Dispatched Van Registration & Departure Log</div>
-          <span class="sub" style="font-size:12px;">Track exact vehicle number, departure time & driver</span>
+          <div class="card-title">🚐 Dispatched Van Log & Departure</div>
+          <span class="sub" style="font-size:12px;">Select from depot's registered fleet, departure time & driver</span>
         </div>
         <div class="g">
           <div>
-            <label>Vehicle Reg Number *</label>
-            <input id="dsp_reg" placeholder="e.g. DM-THA-11-2090" style="text-transform:uppercase;">
+            <label>Select Registered Van *</label>
+            <select id="dsp_reg" onchange="onSelectRegisteredVan()">
+              <option value="">-- Select Van from Fleet --</option>
+            </select>
+            <div id="dsp_reg_custom_wrap" class="hid" style="margin-top:6px;">
+              <input id="dsp_reg_custom" placeholder="Enter Temporary / Rental Vehicle No" style="text-transform:uppercase;">
+            </div>
           </div>
           <div>
             <label>Dispatch Time *</label>
@@ -722,7 +744,159 @@ tr:hover td { background: rgba(0,0,0,0.015); }
     </div>
 
     <!-- ========================================== -->
-    <!-- TAB 4: BULK UPLOAD (EXCEL / POLOXY ERP) -->
+    <!-- TAB: DELIVERY VAN REGISTRATION & MASTER (BULK UPLOAD) -->
+    <!-- ========================================== -->
+    <div id="tab-vanreg" class="adm hid">
+      <!-- Master Card -->
+      <div class="card" style="margin-bottom:16px;">
+        <div class="card-header">
+          <div>
+            <div class="card-title">🚐 Delivery Van Registration & Depot Enlistment Master</div>
+            <div class="sub" style="margin-top:2px;">Register and tag delivery vehicles per depot. Each depot user will only see and select their own depot's registered vans in a quick dropdown.</div>
+          </div>
+          <div style="display:flex; gap:6px; flex-wrap:wrap;">
+            <button type="button" class="s sm" onclick="downloadVanTemplate('blank')">📥 Download Blank Template (.xlsx)</button>
+            <button type="button" class="s sm" onclick="downloadVanTemplate('sample')">📥 Download Sample Template (.xlsx)</button>
+            <button type="button" class="s sm" onclick="downloadVanTemplate('csv')">📥 Download Template (.csv)</button>
+          </div>
+        </div>
+
+        <!-- Bulk Upload Section -->
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(320px, 1fr)); gap:16px; margin-top:10px;">
+          <!-- Left: Drag and drop -->
+          <div>
+            <div class="drop-zone" id="van-drop-zone" onclick="$('van-file-input').click()" style="padding:20px 14px;">
+              <input type="file" id="van-file-input" class="hid" accept=".xlsx,.xls,.csv" onchange="handleVanFileSelect(event)">
+              <div style="font-size:24px; margin-bottom:4px;">🚚</div>
+              <div style="font-weight:600; font-size:13px;">Drag & Drop Excel / CSV for Van Enlistment</div>
+              <div class="sub" style="font-size:11px; margin-top:2px;">or click to browse (.xlsx, .xls, .csv)</div>
+            </div>
+            <div class="sub" style="font-size:11px; margin-top:6px; color:var(--mut);">
+              Columns: <code>Depot</code> | <code>Vehicle_Reg_No</code> | <code>Driver_Name</code> | <code>Driver_Mobile</code> | <code>Vehicle_Type</code> | <code>Status</code>
+            </div>
+          </div>
+
+          <!-- Right: Paste area -->
+          <div>
+            <label style="font-size:12px;">Or Paste Excel / Spreadsheet Rows Here:</label>
+            <textarea id="van-bulk-paste" style="min-height:85px; font-family:monospace; font-size:11px;" placeholder="Depot	Vehicle_Reg_No	Driver_Name	Driver_Mobile	Vehicle_Type	Status
+Gazipur	DM-THA-11-2090	Md. Karim	01711000001	1.5 Ton Pickup	active
+Savar	DM-THA-12-3040	Abdul Ali	01811000002	2.0 Ton Van	active" oninput="parsePastedVanTable()"></textarea>
+            <div style="margin-top:6px; text-align:right;">
+              <button class="p sm" id="btn-commit-van-bulk" onclick="processAndCommitBulkVan()" disabled>Upload & Save All Parsed Vans</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Van Bulk Preview Area -->
+        <div id="van-bulk-preview-wrap" class="hid" style="margin-top:16px;">
+          <div style="font-weight:600; font-size:13px; margin-bottom:6px; color:var(--ac);">
+            Preview: <span id="van-parsed-count">0</span> valid vehicles ready to register
+          </div>
+          <div class="table-wrap" style="max-height:220px; overflow-y:auto;">
+            <table>
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Depot</th>
+                  <th>Vehicle Reg No</th>
+                  <th>Driver Name</th>
+                  <th>Mobile</th>
+                  <th>Vehicle Type</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="van-bulk-preview-tb"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Add Single Van & Master List Grid -->
+      <div style="display:grid; grid-template-columns: 320px 1fr; gap:16px; align-items:start;">
+        <!-- Add Single Van Card -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title" style="font-size:14px;">➕ Register Single Van</div>
+          </div>
+          <div style="display:flex; flex-direction:column; gap:10px;">
+            <div>
+              <label>Depot *</label>
+              <input id="new_van_depot" list="depot_datalist" placeholder="e.g. Gazipur">
+              <datalist id="depot_datalist"></datalist>
+            </div>
+            <div>
+              <label>Vehicle Reg Number *</label>
+              <input id="new_van_reg" placeholder="e.g. DM-THA-11-2090" style="text-transform:uppercase;">
+            </div>
+            <div>
+              <label>Default Driver Name</label>
+              <input id="new_van_driver" placeholder="e.g. Md. Karim">
+            </div>
+            <div>
+              <label>Driver Contact / Mobile</label>
+              <input id="new_van_mobile" placeholder="e.g. 017xxxxxxxx">
+            </div>
+            <div>
+              <label>Vehicle Type</label>
+              <select id="new_van_type">
+                <option value="1.5 Ton Pickup">1.5 Ton Pickup</option>
+                <option value="2.0 Ton Covered Van">2.0 Ton Covered Van</option>
+                <option value="3.0 Ton Covered Van">3.0 Ton Covered Van</option>
+                <option value="1.0 Ton Pickup">1.0 Ton Pickup</option>
+                <option value="Frozen Reefer Van">Frozen Reefer Van</option>
+                <option value="Rental Pickup">Rental Pickup</option>
+              </select>
+            </div>
+            <div>
+              <label>Status</label>
+              <select id="new_van_status">
+                <option value="active">Active / On Service</option>
+                <option value="maintenance">Under Maintenance</option>
+                <option value="standby">Standby / Spare</option>
+              </select>
+            </div>
+            <button class="p sm" style="margin-top:6px;" onclick="addSingleVan()">+ Enlist Vehicle</button>
+          </div>
+        </div>
+
+        <!-- Master List of Registered Vans -->
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title" style="font-size:14px;">
+              📋 Enlisted Vehicles Master List (<span id="van-total-count">0</span> vans)
+            </div>
+            <div style="display:flex; gap:8px;">
+              <select id="van-filter-depot" style="font-size:12px; padding:4px 8px;" onchange="renderRegisteredVansTable()">
+                <option value="">All Depots</option>
+              </select>
+              <button class="s sm" onclick="loadRegisteredVans(true)">↻ Refresh</button>
+            </div>
+          </div>
+          <div class="table-wrap" style="max-height:460px; overflow-y:auto;">
+            <table>
+              <thead>
+                <tr>
+                  <th>Depot</th>
+                  <th>Vehicle Reg No</th>
+                  <th>Assigned Driver</th>
+                  <th>Mobile</th>
+                  <th>Type</th>
+                  <th>Status</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="registered_vans_tb">
+                <tr><td colspan="7" class="center sub" style="padding:16px;">Loading registered fleet...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- TAB 5: BULK UPLOAD (EXCEL / POLOXY ERP) -->
     <!-- ========================================== -->
     <div id="tab-bulk" class="card adm hid">
       <div class="card-header">
@@ -955,9 +1129,192 @@ Savar	Egg	42000	7500" oninput="parsePastedTable()"></textarea>
   </div>
 </div>
 
+<!-- ============================================================ -->
+<!-- MODAL: TODAY GT FROZEN SALES DRILL-DOWN (Hyperlink Target) -->
+<!-- ============================================================ -->
+<div id="modal-sales" class="modal-overlay hid" onclick="if(event.target===this)closeSalesModal()">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div class="modal-title">📈 Today GT Frozen Sales & Performance Drill-down</div>
+      <button class="modal-close" onclick="closeSalesModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <!-- High level stats -->
+      <div class="kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); margin-bottom:14px;">
+        <div class="kpi-card" style="background:var(--bg);">
+          <div class="kpi-label">Today Sales</div>
+          <div class="kpi-val" id="modal_sales_today" style="color:var(--ac)">0</div>
+          <div class="kpi-sub" id="modal_sales_today_target">Target: 0 (Ach 0%)</div>
+        </div>
+        <div class="kpi-card" style="background:var(--bg);">
+          <div class="kpi-label">MTD Sales</div>
+          <div class="kpi-val" id="modal_sales_mtd" style="color:var(--primary)">0</div>
+          <div class="kpi-sub" id="modal_sales_mtd_target">Target: 0 (Ach 0%)</div>
+        </div>
+        <div class="kpi-card" style="background:var(--bg);">
+          <div class="kpi-label">Top Depot</div>
+          <div class="kpi-val" id="modal_sales_top_depot" style="font-size:18px; color:var(--ok);">—</div>
+          <div class="kpi-sub">Best performing depot</div>
+        </div>
+        <div class="kpi-card" style="background:var(--bg);">
+          <div class="kpi-label">Low Depot</div>
+          <div class="kpi-val" id="modal_sales_low_depot" style="font-size:18px; color:var(--bad);">—</div>
+          <div class="kpi-sub">Needs sales focus / support</div>
+        </div>
+      </div>
+
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+        <div style="font-weight:600; font-size:13px;">Product Category Closing & Fulfillment:</div>
+        <button class="s sm" onclick="closeSalesModal(); window.scrollTo({top: 420, behavior:'smooth'});">Jump to Edit Sales & Targets</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Category</th>
+              <th class="num">Orders</th>
+              <th class="num">Delivered</th>
+              <th class="num" style="color:var(--warn)">Pending</th>
+              <th class="num">Closing Stock</th>
+              <th class="num">Avg Daily</th>
+              <th class="center">Stock Cover</th>
+            </tr>
+          </thead>
+          <tbody id="modal_sales_tb"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- MODAL: VANS ON ROAD BREAKDOWN (Hyperlink Target) -->
+<!-- ============================================================ -->
+<div id="modal-onroad" class="modal-overlay hid" onclick="if(event.target===this)closeOnRoadModal()">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div class="modal-title">🚚 Vans On Road Active Fleet Breakdown</div>
+      <button class="modal-close" onclick="closeOnRoadModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <!-- Formula Banner -->
+      <div style="padding:10px 14px; background:var(--primary-bg); border:1px solid var(--bd); border-radius:8px; margin-bottom:14px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+        <span style="font-size:13px; font-weight:600; color:var(--tx);">
+          Formula: <span style="color:var(--ac); font-weight:700;">Vans On Road</span> = Total Assigned (<span id="modal_onroad_tot">0</span>) - Delivery Completed (<span id="modal_onroad_done">0</span>) - Under Maint (<span id="modal_onroad_maint">0</span>)
+        </span>
+        <span class="badge badge-admin" style="font-size:13px; padding:4px 10px;" id="modal_onroad_net">Active On Road: 0</span>
+      </div>
+
+      <!-- Depot-wise Breakdown -->
+      <div style="font-weight:600; font-size:13px; margin-bottom:8px;">Depot-wise Fleet & On Road Summary:</div>
+      <div class="table-wrap" style="margin-bottom:16px;">
+        <table>
+          <thead>
+            <tr>
+              <th>Depot</th>
+              <th class="num">Total Assigned</th>
+              <th class="num">Dispatched</th>
+              <th class="num" style="color:var(--ok)">Delivery Done</th>
+              <th class="num" style="color:var(--bad)">Under Maint</th>
+              <th class="num" style="color:var(--ac); font-weight:700;">On Road Active</th>
+              <th>Incident / Fleet Notes</th>
+            </tr>
+          </thead>
+          <tbody id="modal_onroad_tb"></tbody>
+        </table>
+      </div>
+
+      <!-- Currently Dispatched Vans on Road -->
+      <div style="font-weight:600; font-size:13px; margin-bottom:8px;">Active Dispatched Vehicles En Route:</div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Depot</th>
+              <th>Vehicle Reg No</th>
+              <th>Departure Time</th>
+              <th>Driver</th>
+              <th>Destination / Route</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="modal_onroad_disp_tb"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- MODAL: UNDER MAINTENANCE VANS LOG (Hyperlink Target) -->
+<!-- ============================================================ -->
+<div id="modal-maintenance" class="modal-overlay hid" onclick="if(event.target===this)closeMaintModal()">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div class="modal-title">🛠️ Under Maintenance Vans & Fleet Workshop Log</div>
+      <button class="modal-close" onclick="closeMaintModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
+        <span class="sub" style="font-size:13px;">Overview of all delivery vehicles currently undergoing maintenance, workshop repair, or breakdown.</span>
+        <span id="modal_maint_summary" class="cover-pill cover-bad" style="font-size:13px;">0 Vans in Repair</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Depot</th>
+              <th class="num">Total Vans</th>
+              <th class="num" style="color:var(--bad); font-weight:700;">Under Maint</th>
+              <th class="num" style="color:var(--ok)">Operational</th>
+              <th>Breakdown / Workshop Notes</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="modal_maint_tb"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- MODAL: DEPOTS SUBMISSION CHECKLIST (Hyperlink Target) -->
+<!-- ============================================================ -->
+<div id="modal-depots-status" class="modal-overlay hid" onclick="if(event.target===this)closeDepotsModal()">
+  <div class="modal-box">
+    <div class="modal-header">
+      <div class="modal-title">📋 Depots Daily Submission Status & Checklist</div>
+      <button class="modal-close" onclick="closeDepotsModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
+        <span class="sub" style="font-size:13px;">Track which depots have submitted today's closing figures and which are still pending.</span>
+        <span id="modal_depots_summary" class="badge badge-admin" style="font-size:13px;">Submitted: 0 / 0</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Depot Name</th>
+              <th>Status</th>
+              <th>Categories Submitted</th>
+              <th class="num">Total Orders</th>
+              <th class="num">Total Delivered</th>
+              <th>Submitted By</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="modal_depots_tb"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
 let CATS = ['Frozen', 'Chicken', 'Egg', 'Dairy', 'Others'];
-let me = null, deps = [], ents = [], vehicles = [], users = [], dispatches = [];
+let me = null, deps = [], ents = [], vehicles = [], users = [], dispatches = [], registeredVans = [];
 let parsedBulkRows = [];
 
 const $ = id => document.getElementById(id);
@@ -996,7 +1353,7 @@ function allowed() {
 
 // Tab Switching
 function setTab(tabName) {
-  ['dash', 'entry', 'fleet', 'bulk', 'admin'].forEach(t => {
+  ['dash', 'entry', 'fleet', 'vanreg', 'bulk', 'admin'].forEach(t => {
     const el = $('tab-' + t);
     if (el) el.classList.toggle('hid', t !== tabName);
   });
@@ -1110,6 +1467,7 @@ async function boot() {
   } catch (e) {
     me = null;
     $('login').classList.remove('hid');
+    renderLoginSuggestions();
     return;
   }
   $('login').classList.add('hid');
@@ -1146,17 +1504,19 @@ async function loadAll(quiet = false) {
   const d = $('date').value;
   if (!d) return;
   try {
-    const [entRes, repRes, depRes, fltRes, dspRes] = await Promise.all([
+    const [entRes, repRes, depRes, fltRes, dspRes, vanRes] = await Promise.all([
       api('GET', '/api/entries?date=' + d),
       api('GET', '/api/report?date=' + d),
       api('GET', '/api/depots'),
       api('GET', '/api/vehicles?date=' + d),
-      api('GET', '/api/dispatches?date=' + d).catch(() => ({ dispatches: [] }))
+      api('GET', '/api/dispatches?date=' + d).catch(() => ({ dispatches: [] })),
+      api('GET', '/api/registered-vans').catch(() => ({ vans: [] }))
     ]);
     ents = entRes.entries;
     deps = depRes.depots;
     vehicles = fltRes.vehicles;
     dispatches = dspRes.dispatches || [];
+    registeredVans = vanRes.vans || [];
 
     // Populate Report Fields
     const r = repRes.report;
@@ -1173,6 +1533,8 @@ async function loadAll(quiet = false) {
     populateDepotDropdown();
     renderAll();
     renderDepotDispatches();
+    renderRegisteredVansTable();
+    updateVanDepotDatalist();
   } catch (e) {
     if (!quiet) msg(e.message);
   }
@@ -1208,32 +1570,27 @@ function syncDepotEntryForm() {
   const curDep = $('dep').value;
   $('v_depot_name').value = curDep || '–';
 
+  // Count registered vans for this depot
+  const depotRegisteredCount = (registeredVans || []).filter(v => lc(v.depot) === lc(curDep)).length;
+
   // Load existing vehicle data if any
   const vObj = vehicles.find(v => lc(v.depot) === lc(curDep));
   if (vObj) {
-    $('v_total').value = vObj.total_vehicles || 0;
+    $('v_total').value = vObj.total_vehicles || (depotRegisteredCount > 0 ? depotRegisteredCount : 0);
     $('v_disp').value = vObj.dispatched || 0;
-    $('v_onroad').value = vObj.on_road || 0;
     $('v_done').value = vObj.delivered || 0;
     $('v_maint').value = vObj.under_maintenance || 0;
     $('v_notes').value = vObj.notes || '';
   } else {
-    $('v_total').value = 0;
+    $('v_total').value = depotRegisteredCount > 0 ? depotRegisteredCount : 0;
     $('v_disp').value = 0;
-    $('v_onroad').value = 0;
     $('v_done').value = 0;
     $('v_maint').value = 0;
     $('v_notes').value = '';
   }
   updateEntryFormUnits();
+  populateDepotVansDropdown();
   renderDepotDispatches();
-}
-
-function autoCalcOnRoad() {
-  const disp = num($('v_disp').value);
-  const done = num($('v_done').value);
-  const onRoad = Math.max(0, disp - done);
-  $('v_onroad').value = onRoad;
 }
 
 // Category Total Aggregate
@@ -1266,17 +1623,21 @@ function renderAll() {
   $('kpi-pending').textContent = fmt(totPending);
   $('kpi-orders-tot').textContent = `Orders: ${fmt(totOrders)} | Delivered: ${fmt(totDelivered)}`;
 
-  // Fleet Totals
-  let totVans = 0, totDisp = 0, totRoad = 0, totDone = 0, totMaint = 0;
+  // Fleet Totals & On Road Calculation (Total Assigned - Delivered - Under Maintenance)
+  let totVans = 0, totDisp = 0, totDone = 0, totMaint = 0;
   vehicles.forEach(v => {
     totVans += v.total_vehicles || 0;
     totDisp += v.dispatched || 0;
-    totRoad += v.on_road || 0;
     totDone += v.delivered || 0;
     totMaint += v.under_maintenance || 0;
   });
+  const totRoad = Math.max(0, totVans - totDone - totMaint);
+
+  $('kpi-onroad').textContent = totRoad;
+  $('kpi-onroad-sub').textContent = `Total (${totVans}) - Done (${totDone}) - Maint (${totMaint})`;
+
   $('kpi-disp').textContent = totDisp;
-  $('kpi-disp-sub').textContent = `Active On Road: ${totRoad} | Done: ${totDone}`;
+  $('kpi-disp-sub').textContent = `Active Fleet Dispatches`;
 
   $('kpi-maint').textContent = totMaint;
   $('kpi-maint-sub').textContent = totMaint > 0 ? `${totMaint} van(s) in repair` : 'All vans operational ✓';
@@ -1338,11 +1699,12 @@ function renderAll() {
   $('fleet_tb').innerHTML = fleetList.length ? fleetList.map(depName => {
     const v = vehicles.find(x => lc(x.depot) === lc(depName)) || { total_vehicles: 0, dispatched: 0, on_road: 0, delivered: 0, under_maintenance: 0, notes: '', by: '' };
     const canEdit = allowed().some(d => lc(d) === lc(depName));
+    const depotOnRoad = Math.max(0, (v.total_vehicles || 0) - (v.delivered || 0) - (v.under_maintenance || 0));
     return `<tr>
       <td><b>${esc(depName)}</b></td>
       <td class="num">${v.total_vehicles}</td>
       <td class="num">${v.dispatched}</td>
-      <td class="num" style="font-weight:700; color:var(--ac)">${v.on_road}</td>
+      <td class="num" style="font-weight:700; color:var(--ac)">${depotOnRoad}</td>
       <td class="num" style="font-weight:700; color:var(--ok)">${v.delivered}</td>
       <td class="num" style="font-weight:700; color:var(--bad)">${v.under_maintenance || 0}</td>
       <td class="sub">${esc(v.notes || '—')}</td>
@@ -1418,14 +1780,19 @@ async function saveDepotVehicles() {
     const dep = $('v_depot_name').value;
     if (!dep || dep === '–') throw new Error('Please select a depot');
 
+    const tot = num($('v_total').value);
+    const done = num($('v_done').value);
+    const maint = num($('v_maint').value);
+    const onRoad = Math.max(0, tot - done - maint);
+
     await api('PUT', '/api/vehicles', {
       date: d,
       depot: dep,
-      total_vehicles: num($('v_total').value),
+      total_vehicles: tot,
       dispatched: num($('v_disp').value),
-      on_road: num($('v_onroad').value),
-      delivered: num($('v_done').value),
-      under_maintenance: num($('v_maint').value),
+      on_road: onRoad,
+      delivered: done,
+      under_maintenance: maint,
       notes: $('v_notes').value
     });
     msg(`Vehicle status saved for ${dep} ✓`, true);
@@ -1482,13 +1849,15 @@ function genReport() {
 
   const catTotals = getCategoryTotals();
 
-  // Total fleet metrics sum
-  let totVehiclesOnRoad = 0, totVehiclesDispatched = 0, totVehiclesMaint = 0;
+  // Total fleet metrics sum (On Road = Total Assigned - Delivered - Under Maintenance)
+  let totVehiclesDispatched = 0, totVehiclesMaint = 0, totV = 0, totD = 0;
   vehicles.forEach(v => {
-    totVehiclesOnRoad += (v.on_road || 0);
+    totV += (v.total_vehicles || 0);
+    totD += (v.delivered || 0);
     totVehiclesDispatched += (v.dispatched || 0);
     totVehiclesMaint += (v.under_maintenance || 0);
   });
+  const totVehiclesOnRoad = Math.max(0, totV - totD - totVehiclesMaint);
 
   const L = [
     `*Cluster Manager Daily Update*`,
@@ -1637,13 +2006,18 @@ function renderDepotDispatches() {
 async function logDispatchedVan() {
   const curDep = $('dep').value;
   if (!curDep) return msg('Please select a depot first');
-  const reg = ($('dsp_reg').value || '').trim();
+
+  const sel = $('dsp_reg');
+  let reg = sel ? (sel.value || '').trim() : '';
+  if (reg === '__other__') {
+    reg = ($('dsp_reg_custom') ? $('dsp_reg_custom').value : '').trim().toUpperCase();
+  }
   const time = ($('dsp_time').value || '').trim();
   const driver = ($('dsp_driver').value || '').trim();
   const dest = ($('dsp_dest').value || '').trim();
   const status = $('dsp_status').value;
 
-  if (!reg) return msg('Please enter vehicle registration number (e.g. DM-THA-11-2090)');
+  if (!reg) return msg('Please select or enter vehicle registration number (e.g. DM-THA-11-2090)');
   if (!time) return msg('Please specify dispatch time');
 
   try {
@@ -1657,7 +2031,8 @@ async function logDispatchedVan() {
       status: status
     });
     msg(`Van ${reg} logged for ${curDep} at ${time} ✓`, true);
-    $('dsp_reg').value = '';
+    if (sel) sel.value = '';
+    if ($('dsp_reg_custom')) $('dsp_reg_custom').value = '';
     $('dsp_driver').value = '';
     $('dsp_dest').value = '';
     await loadAll(true);
@@ -1665,6 +2040,60 @@ async function logDispatchedVan() {
   } catch (e) {
     msg(e.message);
   }
+}
+
+function onSelectRegisteredVan() {
+  const sel = $('dsp_reg');
+  const customWrap = $('dsp_reg_custom_wrap');
+  const customInp = $('dsp_reg_custom');
+  if (!sel) return;
+
+  if (sel.value === '__other__') {
+    if (customWrap) customWrap.classList.remove('hid');
+    if (customInp) customInp.focus();
+    return;
+  }
+
+  if (customWrap) customWrap.classList.add('hid');
+  const selOpt = sel.options[sel.selectedIndex];
+  const driverName = selOpt ? selOpt.getAttribute('data-driver') : '';
+  if (driverName && $('dsp_driver')) {
+    $('dsp_driver').value = driverName;
+  }
+}
+
+function populateDepotVansDropdown() {
+  const curDep = $('dep').value;
+  const sel = $('dsp_reg');
+  if (!sel) return;
+  const customWrap = $('dsp_reg_custom_wrap');
+  if (customWrap) customWrap.classList.add('hid');
+
+  if (!curDep) {
+    sel.innerHTML = '<option value="">-- Select Depot First --</option>';
+    return;
+  }
+
+  const depotVans = (registeredVans || []).filter(v => lc(v.depot) === lc(curDep));
+  if (!depotVans.length) {
+    sel.innerHTML = `
+      <option value="">-- No Enlisted Vans for ${esc(curDep)} --</option>
+      <option value="__other__">➕ Enter Manual / Temporary Vehicle</option>
+    `;
+    if (customWrap) customWrap.classList.remove('hid');
+    return;
+  }
+
+  const opts = [
+    `<option value="">-- Select Van from Fleet (${depotVans.length} available) --</option>`,
+    ...depotVans.map(v => {
+      const driver = v.driver_name ? ` (Driver: ${esc(v.driver_name)})` : '';
+      const type = v.vehicle_type ? ` - ${esc(v.vehicle_type)}` : '';
+      return `<option value="${esc(v.vehicle_no)}" data-driver="${esc(v.driver_name || '')}">${esc(v.vehicle_no)}${driver}${type}</option>`;
+    }),
+    `<option value="__other__">➕ Other / Temporary Rental Pickup</option>`
+  ];
+  sel.innerHTML = opts.join('');
 }
 
 async function deleteDispatch(id) {
@@ -1677,6 +2106,192 @@ async function deleteDispatch(id) {
   } catch (e) {
     msg(e.message);
   }
+}
+
+// ----------------------------------------------------
+// DRILL-DOWN MODALS (HYPERLINK TARGETS)
+// ----------------------------------------------------
+
+// 1. Sales Modal
+function openSalesModal() {
+  $('modal-sales').classList.remove('hid');
+  renderSalesModal();
+}
+function closeSalesModal() {
+  $('modal-sales').classList.add('hid');
+}
+function renderSalesModal() {
+  const st = num($('st').value), stt = num($('stt').value);
+  const sm = num($('sm').value), smt = num($('smt').value);
+  $('modal_sales_today').textContent = st ? fmt(st) : '0';
+  $('modal_sales_today_target').textContent = `Target: ${fmt(stt)} (Ach ${pct(st, stt)}%)`;
+  $('modal_sales_mtd').textContent = sm ? fmt(sm) : '0';
+  $('modal_sales_mtd_target').textContent = `Target: ${fmt(smt)} (Ach ${pct(sm, smt)}%)`;
+  $('modal_sales_top_depot').textContent = $('top_depot').value || '—';
+  $('modal_sales_low_depot').textContent = $('low_depot').value || '—';
+
+  const catTotals = getCategoryTotals();
+  $('modal_sales_tb').innerHTML = CATS.map(c => {
+    const x = catTotals[c] || { o: 0, v: 0, s: 0, a: 0 };
+    const cov = x.a > 0 ? (x.s / x.a).toFixed(1) : '–';
+    const covClass = x.a > 0 && (x.s / x.a) < 3 ? 'cover-bad' : 'cover-ok';
+    return `<tr>
+      <td><b>${esc(c)}</b> <span class="sub">(${getCatUnit(c)})</span></td>
+      <td class="num">${fmt(x.o)}</td>
+      <td class="num">${fmt(x.v)}</td>
+      <td class="num" style="color:var(--warn)">${fmt(x.o - x.v)}</td>
+      <td class="num">${fmt(x.s)}</td>
+      <td class="num">${fmt(x.a)}</td>
+      <td class="center"><span class="cover-pill ${covClass}">${cov} days</span></td>
+    </tr>`;
+  }).join('');
+}
+
+// 2. Vans On Road Modal (Formula: Total Assigned - Delivery Completed - Under Maintenance)
+function openOnRoadModal() {
+  $('modal-onroad').classList.remove('hid');
+  renderOnRoadModal();
+}
+function closeOnRoadModal() {
+  $('modal-onroad').classList.add('hid');
+}
+function renderOnRoadModal() {
+  let totVans = 0, totDone = 0, totMaint = 0, totDisp = 0;
+  vehicles.forEach(v => {
+    totVans += v.total_vehicles || 0;
+    totDisp += v.dispatched || 0;
+    totDone += v.delivered || 0;
+    totMaint += v.under_maintenance || 0;
+  });
+  const netOnRoad = Math.max(0, totVans - totDone - totMaint);
+
+  $('modal_onroad_tot').textContent = totVans;
+  $('modal_onroad_done').textContent = totDone;
+  $('modal_onroad_maint').textContent = totMaint;
+  $('modal_onroad_net').textContent = `Active On Road: ${netOnRoad}`;
+
+  const allDepotList = [...new Set([...deps, ...vehicles.map(v => v.depot)])];
+  $('modal_onroad_tb').innerHTML = allDepotList.length ? allDepotList.map(dep => {
+    const v = vehicles.find(x => lc(x.depot) === lc(dep)) || { total_vehicles: 0, dispatched: 0, delivered: 0, under_maintenance: 0, notes: '' };
+    const onRoad = Math.max(0, (v.total_vehicles || 0) - (v.delivered || 0) - (v.under_maintenance || 0));
+    return `<tr>
+      <td><b>${esc(dep)}</b></td>
+      <td class="num">${v.total_vehicles || 0}</td>
+      <td class="num">${v.dispatched || 0}</td>
+      <td class="num" style="color:var(--ok)">${v.delivered || 0}</td>
+      <td class="num" style="color:var(--bad)">${v.under_maintenance || 0}</td>
+      <td class="num" style="color:var(--ac); font-weight:700; font-size:15px;">${onRoad}</td>
+      <td class="sub">${esc(v.notes || '—')}</td>
+    </tr>`;
+  }).join('') : '<tr><td colspan="7" class="center sub" style="padding:16px;">No fleet data for today.</td></tr>';
+
+  // Live Dispatches on road
+  const activeDispatches = (dispatches || []).filter(d => d.status === 'dispatched');
+  $('modal_onroad_disp_tb').innerHTML = activeDispatches.length ? activeDispatches.map(d => `
+    <tr>
+      <td><b>${esc(d.depot)}</b></td>
+      <td style="font-weight:700; color:var(--ac); font-family:monospace;">${esc(d.vehicle_no)}</td>
+      <td>${esc(d.dispatch_time || '—')}</td>
+      <td>${esc(d.driver_name || '—')}</td>
+      <td>${esc(d.destination || '—')}</td>
+      <td><span class="badge badge-depot">On Road</span></td>
+    </tr>
+  `).join('') : '<tr><td colspan="6" class="center sub" style="padding:12px;">No individual vehicle departure logs logged yet today.</td></tr>';
+}
+
+// 3. Maintenance Modal
+function openMaintModal() {
+  $('modal-maintenance').classList.remove('hid');
+  renderMaintModal();
+}
+function closeMaintModal() {
+  $('modal-maintenance').classList.add('hid');
+}
+function renderMaintModal() {
+  let totMaint = 0;
+  const maintList = [];
+  const allDepotList = [...new Set([...deps, ...vehicles.map(v => v.depot)])];
+
+  allDepotList.forEach(dep => {
+    const v = vehicles.find(x => lc(x.depot) === lc(dep)) || { total_vehicles: 0, under_maintenance: 0, notes: '' };
+    const m = v.under_maintenance || 0;
+    totMaint += m;
+    if (m > 0 || (v.notes && v.notes.toLowerCase().includes('repair'))) {
+      maintList.push({
+        depot: dep,
+        total: v.total_vehicles || 0,
+        maint: m,
+        notes: v.notes || 'Under workshop repair'
+      });
+    }
+  });
+
+  const sumEl = $('modal_maint_summary');
+  if (sumEl) sumEl.textContent = totMaint > 0 ? `${totMaint} Van(s) Under Maintenance` : '0 Vans Under Maintenance';
+
+  const tb = $('modal_maint_tb');
+  if (!tb) return;
+
+  if (!maintList.length) {
+    tb.innerHTML = '<tr><td colspan="6" class="center ok" style="padding:20px; font-weight:700;">🎉 Excellent! All delivery vans across all depots are operational and in service. Zero vehicles under maintenance!</td></tr>';
+    return;
+  }
+
+  tb.innerHTML = maintList.map(item => `
+    <tr>
+      <td><b>${esc(item.depot)}</b></td>
+      <td class="num">${item.total}</td>
+      <td class="num" style="color:var(--bad); font-weight:700; font-size:15px;">${item.maint}</td>
+      <td class="num" style="color:var(--ok)">${Math.max(0, item.total - item.maint)}</td>
+      <td class="sub">${esc(item.notes)}</td>
+      <td><button class="sm" onclick="closeMaintModal(); quickEditFleet('${esc(item.depot)}')">Update</button></td>
+    </tr>
+  `).join('');
+}
+
+// 4. Depots Submission Modal
+function openDepotsModal() {
+  $('modal-depots-status').classList.remove('hid');
+  renderDepotsModal();
+}
+function closeDepotsModal() {
+  $('modal-depots-status').classList.add('hid');
+}
+function renderDepotsModal() {
+  const allKnown = deps.length ? deps : [...new Set(ents.map(r => r.depot))];
+  const depotSubMap = {};
+  ents.forEach(r => {
+    if (!depotSubMap[lc(r.depot)]) {
+      depotSubMap[lc(r.depot)] = { cats: [], orders: 0, delivered: 0, by: r.by };
+    }
+    depotSubMap[lc(r.depot)].cats.push(r.category);
+    depotSubMap[lc(r.depot)].orders += (r.orders || 0);
+    depotSubMap[lc(r.depot)].delivered += (r.delivered || 0);
+    if (r.by) depotSubMap[lc(r.depot)].by = r.by;
+  });
+
+  const subCount = allKnown.filter(d => depotSubMap[lc(d)]).length;
+  $('modal_depots_summary').textContent = `Submitted: ${subCount} / ${allKnown.length} Depots`;
+
+  const tb = $('modal_depots_tb');
+  if (!tb) return;
+
+  tb.innerHTML = allKnown.map(dep => {
+    const sub = depotSubMap[lc(dep)];
+    const isDone = !!sub;
+    const badge = isDone
+      ? '<span class="badge badge-depot">✓ Submitted</span>'
+      : '<span class="badge cover-bad">⏳ Pending</span>';
+    return `<tr>
+      <td><b>${esc(dep)}</b></td>
+      <td>${badge}</td>
+      <td>${isDone ? esc(sub.cats.join(', ')) : '<span class="sub">No entries yet</span>'}</td>
+      <td class="num">${isDone ? fmt(sub.orders) : '—'}</td>
+      <td class="num">${isDone ? fmt(sub.delivered) : '—'}</td>
+      <td class="sub">${isDone ? esc(sub.by || 'Depot Incharge') : '—'}</td>
+      <td><button class="sm" onclick="closeDepotsModal(); $('dep').value='${esc(dep)}'; syncDepotEntryForm(); setTab('entry');">View Depot</button></td>
+    </tr>`;
+  }).join('');
 }
 
 function openPendingModal() {
@@ -1734,6 +2349,292 @@ function renderPendingModal() {
       <td class="num">${fmt(row.stock)}</td>
     </tr>`;
   }).join('');
+}
+
+// ========================================================
+// DELIVERY VAN REGISTRATION & FLEET MASTER
+// ========================================================
+let parsedVanRows = [];
+
+async function loadRegisteredVans(quiet = false) {
+  try {
+    const res = await api('GET', '/api/registered-vans');
+    registeredVans = res.vans || [];
+    renderRegisteredVansTable();
+    populateDepotVansDropdown();
+    updateVanDepotDatalist();
+    if (quiet) msg('Fleet master refreshed ✓', true);
+  } catch (e) {
+    if (!quiet) msg('Could not load registered vans: ' + e.message);
+  }
+}
+
+function updateVanDepotDatalist() {
+  const dl = $('depot_datalist');
+  const filterSel = $('van-filter-depot');
+  const allKnown = deps.length ? deps : [...new Set(registeredVans.map(v => v.depot))];
+  if (dl) dl.innerHTML = allKnown.map(d => `<option value="${esc(d)}">`).join('');
+  if (filterSel) {
+    const prev = filterSel.value;
+    filterSel.innerHTML = '<option value="">All Depots</option>' + allKnown.map(d => `<option value="${esc(d)}">${esc(d)}</option>`).join('');
+    if (allKnown.includes(prev)) filterSel.value = prev;
+  }
+}
+
+function renderRegisteredVansTable() {
+  const tb = $('registered_vans_tb');
+  const countEl = $('van-total-count');
+  if (!tb) return;
+
+  const filterDep = $('van-filter-depot') ? $('van-filter-depot').value : '';
+  const list = filterDep
+    ? registeredVans.filter(v => lc(v.depot) === lc(filterDep))
+    : registeredVans;
+
+  if (countEl) countEl.textContent = list.length;
+
+  if (!list.length) {
+    tb.innerHTML = `<tr><td colspan="7" class="center sub" style="padding:16px;">${filterDep ? `No vehicles registered under depot "${esc(filterDep)}".` : 'No registered vans in system. Upload or add vans above.'}</td></tr>`;
+    return;
+  }
+
+  tb.innerHTML = list.map(v => {
+    const statusBadge = v.status === 'active'
+      ? '<span class="badge badge-depot">Active</span>'
+      : (v.status === 'maintenance' ? '<span class="badge cover-bad">Workshop</span>' : '<span class="badge">Standby</span>');
+    return `<tr>
+      <td><b>${esc(v.depot)}</b></td>
+      <td style="font-weight:700; color:var(--ac); font-family:monospace;">${esc(v.vehicle_no)}</td>
+      <td>${esc(v.driver_name || '—')}</td>
+      <td class="sub">${esc(v.driver_mobile || '—')}</td>
+      <td>${esc(v.vehicle_type || 'Pickup Van')}</td>
+      <td>${statusBadge}</td>
+      <td>
+        <button class="sm" style="color:var(--bad);" onclick="deleteRegisteredVan(${v.id}, '${esc(v.vehicle_no)}')">Delete</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+async function addSingleVan() {
+  const depot = ($('new_van_depot').value || '').trim();
+  const reg = ($('new_van_reg').value || '').trim().toUpperCase();
+  const driver = ($('new_van_driver').value || '').trim();
+  const mobile = ($('new_van_mobile').value || '').trim();
+  const type = $('new_van_type').value;
+  const status = $('new_van_status').value;
+
+  if (!depot) return msg('Please enter depot name');
+  if (!reg) return msg('Please enter vehicle registration number');
+
+  try {
+    await api('POST', '/api/registered-vans', {
+      depot: depot,
+      vehicle_no: reg,
+      driver_name: driver,
+      driver_mobile: mobile,
+      vehicle_type: type,
+      status: status
+    });
+    msg(`Vehicle ${reg} registered for depot ${depot} ✓`, true);
+    $('new_van_reg').value = '';
+    $('new_van_driver').value = '';
+    $('new_van_mobile').value = '';
+    await loadRegisteredVans(true);
+    syncDepotEntryForm();
+  } catch (e) {
+    msg(e.message);
+  }
+}
+
+async function deleteRegisteredVan(id, regNo) {
+  if (!confirm(`Delete vehicle ${regNo} from fleet master?`)) return;
+  try {
+    await api('DELETE', '/api/registered-vans/' + id);
+    msg(`Vehicle ${regNo} removed ✓`, true);
+    await loadRegisteredVans(true);
+    syncDepotEntryForm();
+  } catch (e) {
+    msg(e.message);
+  }
+}
+
+function downloadVanTemplate(type) {
+  if (typeof XLSX === 'undefined') {
+    msg('Excel library is still loading, please wait 2 seconds.');
+    return;
+  }
+  const sampleDepots = (deps && deps.length) ? deps.slice(0, 4) : ['Gazipur', 'Savar', 'Dhaka', 'Chittagong'];
+  let data = [];
+  let filename = 'Van_Registration_Template.xlsx';
+
+  if (type === 'blank') {
+    filename = 'Blank_Van_Registration_Template.xlsx';
+    data = [
+      { 'Depot': '', 'Vehicle_Reg_No': '', 'Driver_Name': '', 'Driver_Mobile': '', 'Vehicle_Type': 'Pickup Van', 'Status': 'active' }
+    ];
+  } else if (type === 'csv') {
+    filename = 'Van_Registration_Template.csv';
+    data = [
+      { 'Depot': sampleDepots[0] || 'Gazipur', 'Vehicle_Reg_No': 'DM-THA-11-2090', 'Driver_Name': 'Md. Karim', 'Driver_Mobile': '01711000001', 'Vehicle_Type': '1.5 Ton Pickup', 'Status': 'active' },
+      { 'Depot': sampleDepots[1] || 'Savar', 'Vehicle_Reg_No': 'DM-THA-12-3040', 'Driver_Name': 'Abdul Ali', 'Driver_Mobile': '01811000002', 'Vehicle_Type': '2.0 Ton Van', 'Status': 'active' }
+    ];
+  } else {
+    filename = 'Sample_Van_Registration_Template.xlsx';
+    data = [
+      { 'Depot': sampleDepots[0] || 'Gazipur', 'Vehicle_Reg_No': 'DM-THA-11-2090', 'Driver_Name': 'Md. Karim', 'Driver_Mobile': '01711000001', 'Vehicle_Type': '1.5 Ton Pickup', 'Status': 'active' },
+      { 'Depot': sampleDepots[0] || 'Gazipur', 'Vehicle_Reg_No': 'DM-THA-11-2091', 'Driver_Name': 'Md. Rahim', 'Driver_Mobile': '01711000002', 'Vehicle_Type': '2.0 Ton Van', 'Status': 'active' },
+      { 'Depot': sampleDepots[1] || 'Savar', 'Vehicle_Reg_No': 'DM-THA-12-3040', 'Driver_Name': 'Abdul Ali', 'Driver_Mobile': '01811000003', 'Vehicle_Type': '1.5 Ton Pickup', 'Status': 'active' },
+      { 'Depot': sampleDepots[2] || 'Dhaka', 'Vehicle_Reg_No': 'DM-THA-14-5500', 'Driver_Name': 'Sohel Rana', 'Driver_Mobile': '01911000004', 'Vehicle_Type': '3.0 Ton Covered', 'Status': 'active' }
+    ];
+  }
+
+  const ws = XLSX.utils.json_to_sheet(data);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Van_Registration");
+  XLSX.writeFile(wb, filename, { bookType: type === 'csv' ? 'csv' : 'xlsx' });
+  msg(`Downloaded template: ${filename} ✓`, true);
+}
+
+function handleVanFileSelect(evt) {
+  const file = evt.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const data = new Uint8Array(e.target.result);
+      if (typeof XLSX === 'undefined') throw new Error('SheetJS library not loaded');
+      const workbook = XLSX.read(data, { type: 'array' });
+      const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rawMatrix = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
+      if (!rawMatrix || !rawMatrix.length) return msg('Uploaded file has no data');
+
+      let headerRowIdx = 0;
+      for (let i = 0; i < Math.min(rawMatrix.length, 10); i++) {
+        const rowStr = (rawMatrix[i] || []).map(c => String(c).toLowerCase()).join(' ');
+        if (rowStr.includes('depot') || rowStr.includes('vehicle') || rowStr.includes('van') || rowStr.includes('reg')) {
+          headerRowIdx = i;
+          break;
+        }
+      }
+
+      const headerParts = rawMatrix[headerRowIdx].map(c => String(c).trim());
+      const jsonRows = [];
+      for (let i = headerRowIdx + 1; i < rawMatrix.length; i++) {
+        const r = rawMatrix[i];
+        if (!r || !r.some(cell => String(cell).trim() !== '')) continue;
+        const obj = {};
+        headerParts.forEach((h, idx) => { if (h) obj[h] = r[idx] !== undefined ? r[idx] : ''; });
+        jsonRows.push(obj);
+      }
+      processParsedVanRows(jsonRows);
+    } catch (err) {
+      msg('Excel parse error: ' + err.message);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function parsePastedVanTable() {
+  const text = $('van-bulk-paste').value.trim();
+  if (!text) {
+    parsedVanRows = [];
+    renderVanBulkPreview();
+    return;
+  }
+  const lines = text.split(/\r?\n/).filter(Boolean);
+  if (lines.length < 2) return;
+
+  let headerIdx = 0;
+  for (let i = 0; i < Math.min(lines.length, 5); i++) {
+    const l = lines[i].toLowerCase();
+    if (l.includes('depot') || l.includes('vehicle') || l.includes('van') || l.includes('reg') || l.includes('driver')) {
+      headerIdx = i;
+      break;
+    }
+  }
+
+  const headerParts = lines[headerIdx].split('\t').map(x => x.trim().toLowerCase());
+  const rows = [];
+  for (let i = headerIdx + 1; i < lines.length; i++) {
+    const cells = lines[i].split('\t');
+    if (!cells.some(c => c && c.trim())) continue;
+    const obj = {};
+    headerParts.forEach((h, idx) => { obj[h] = cells[idx] ? cells[idx].trim() : ''; });
+    rows.push(obj);
+  }
+  processParsedVanRows(rows);
+}
+
+function processParsedVanRows(rows) {
+  parsedVanRows = [];
+  const knownDepots = deps.length ? deps : allowed();
+
+  rows.forEach((r, idx) => {
+    const rawDepot = detectField(r, ['depot', 'depotname', 'warehouse', 'branch', 'location', 'ডিপো']);
+    const rawReg = detectField(r, ['vehicleno', 'vehicleregno', 'vehiclereg', 'regno', 'vehicle', 'van', 'vanno', 'গাড়ি', 'গাড়িনং']);
+    const rawDriver = detectField(r, ['driver', 'drivername', 'ড্রাইভার']);
+    const rawMobile = detectField(r, ['mobile', 'drivermobile', 'phone', 'contact']);
+    const rawType = detectField(r, ['type', 'vehicletype', 'capacity', 'vantype']);
+    const rawStatus = detectField(r, ['status', 'condition', 'state']);
+
+    const matchedDepot = knownDepots.find(d => lc(d) === lc(rawDepot)) || (rawDepot ? String(rawDepot).trim() : '');
+    const cleanReg = rawReg ? String(rawReg).trim().toUpperCase() : '';
+
+    if (matchedDepot && cleanReg) {
+      parsedVanRows.push({
+        id: idx + 1,
+        depot: matchedDepot,
+        vehicle_no: cleanReg,
+        driver_name: rawDriver ? String(rawDriver).trim() : '',
+        driver_mobile: rawMobile ? String(rawMobile).trim() : '',
+        vehicle_type: rawType ? String(rawType).trim() : 'Pickup Van',
+        status: rawStatus ? String(rawStatus).trim().toLowerCase() : 'active'
+      });
+    }
+  });
+
+  renderVanBulkPreview();
+}
+
+function renderVanBulkPreview() {
+  $('van-parsed-count').textContent = parsedVanRows.length;
+  $('btn-commit-van-bulk').disabled = parsedVanRows.length === 0;
+  $('van-bulk-preview-wrap').classList.toggle('hid', parsedVanRows.length === 0);
+
+  $('van-bulk-preview-tb').innerHTML = parsedVanRows.slice(0, 50).map((r, i) => `
+    <tr>
+      <td>${i + 1}</td>
+      <td><b>${esc(r.depot)}</b></td>
+      <td style="font-weight:700; color:var(--ac); font-family:monospace;">${esc(r.vehicle_no)}</td>
+      <td>${esc(r.driver_name || '—')}</td>
+      <td>${esc(r.driver_mobile || '—')}</td>
+      <td>${esc(r.vehicle_type || '—')}</td>
+      <td><span class="badge badge-depot">${esc(r.status || 'active')}</span></td>
+    </tr>
+  `).join('');
+}
+
+async function processAndCommitBulkVan() {
+  if (!parsedVanRows.length) return msg('No valid van rows to upload');
+  const btn = $('btn-commit-van-bulk');
+  btn.disabled = true;
+  btn.textContent = 'Saving vans...';
+
+  try {
+    const res = await api('POST', '/api/bulk/registered-vans', { items: parsedVanRows });
+    msg(`Successfully registered ${res.saved} delivery vans to fleet master ✓`, true);
+    $('van-bulk-paste').value = '';
+    parsedVanRows = [];
+    renderVanBulkPreview();
+    await loadRegisteredVans(true);
+    syncDepotEntryForm();
+  } catch (e) {
+    msg('Upload failed: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Upload & Save All Parsed Vans';
+  }
 }
 
 // ========================================================
@@ -2093,19 +2994,77 @@ function toggleLoginPw() {
   p.type = p.type === 'password' ? 'text' : 'password';
 }
 
-async function doLogin() {
+function getSavedUsernames() {
+  try {
+    const list = JSON.parse(localStorage.getItem('dup_saved_users') || '[]');
+    return Array.isArray(list) ? list : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function recordSuccessfulUser(username) {
+  if (!username) return;
+  try {
+    localStorage.setItem('dup_last_username', username);
+    const existing = getSavedUsernames().filter(u => u.toLowerCase() !== username.toLowerCase());
+    existing.unshift(username);
+    // keep top 10 unique IDs
+    localStorage.setItem('dup_saved_users', JSON.stringify(existing.slice(0, 10)));
+  } catch (e) {}
+}
+
+function renderLoginSuggestions() {
+  const datalist = $('user-id-suggestions');
+  if (datalist) {
+    const saved = getSavedUsernames();
+    datalist.innerHTML = saved.map(u => `<option value="${esc(u)}">`).join('');
+  }
+  const lastUser = localStorage.getItem('dup_last_username');
+  if (lastUser && $('lu')) {
+    if (!$('lu').value) {
+      $('lu').value = lastUser;
+    }
+    // If username is already filled, focus password
+    setTimeout(() => {
+      if ($('lp') && !$('login').classList.contains('hid')) {
+        $('lp').focus();
+      }
+    }, 100);
+  }
+}
+
+async function doLogin(ev) {
+  if (ev && ev.preventDefault) ev.preventDefault();
   const u = ($('lu').value || '').trim();
   const p = ($('lp').value || '').trim();
   $('le').textContent = '';
   if (!u || !p) {
     $('le').textContent = 'Please enter both User ID and Password.';
-    return;
+    return false;
   }
-  const btn = document.querySelector('#login button.p');
+  const btn = document.querySelector('#login-form button[type="submit"]') || document.querySelector('#login button.p');
   const oldText = btn ? btn.textContent : 'Sign In';
   if (btn) { btn.textContent = 'Signing in...'; btn.disabled = true; }
   try {
     await api('POST', '/api/login', { username: u, password: p });
+    
+    // Save user ID for future suggestion/pre-fill on logout
+    recordSuccessfulUser(u);
+
+    // Browser Credential Management API to trigger native password manager save prompt
+    if (window.PasswordCredential && navigator.credentials && navigator.credentials.store) {
+      try {
+        const formEl = $('login-form');
+        const cred = formEl 
+          ? new PasswordCredential(formEl) 
+          : new PasswordCredential({ id: u, password: p, name: u });
+        if (cred) await navigator.credentials.store(cred);
+      } catch (credErr) {
+        // Safe fallback if browser security policy restricts PasswordCredential
+      }
+    }
+
     $('lp').value = '';
     await boot();
   } catch (e) {
@@ -2113,10 +3072,15 @@ async function doLogin() {
   } finally {
     if (btn) { btn.textContent = oldText; btn.disabled = false; }
   }
+  return false;
 }
 
 async function doLogout() {
   try { await api('POST', '/api/logout', {}); } catch (e) {}
+  // Keep the last successfully authenticated username in localStorage for suggestion
+  if (me && me.username) {
+    recordSuccessfulUser(me.username);
+  }
   location.reload();
 }
 
@@ -2128,9 +3092,20 @@ function showPw(on, forced = false) {
   if (on) $('pc').focus();
 }
 
-async function savePw() {
+async function savePw(ev) {
+  if (ev && ev.preventDefault) ev.preventDefault();
   try {
-    await api('POST', '/api/password', { current: $('pc').value, password: $('pn').value });
+    const cur = $('pc').value;
+    const next = $('pn').value;
+    await api('POST', '/api/password', { current: cur, password: next });
+    
+    if (me && me.username && window.PasswordCredential && navigator.credentials && navigator.credentials.store) {
+      try {
+        const cred = new PasswordCredential({ id: me.username, password: next, name: me.username });
+        await navigator.credentials.store(cred);
+      } catch (e) {}
+    }
+
     me.must_change = false;
     $('pc').value = '';
     $('pn').value = '';
@@ -2138,6 +3113,7 @@ async function savePw() {
     msg('Password updated successfully ✓', true);
     await loadAll(true);
   } catch (e) { msg(e.message); }
+  return false;
 }
 
 async function doForgot() {
