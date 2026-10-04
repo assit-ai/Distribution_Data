@@ -890,6 +890,7 @@ async function boot() {
   await loadCategories();
   await loadAll();
   if (isAdmin) loadUsers();
+  setTab(isAdmin ? 'dash' : 'entry');
   setInterval(() => { if (!document.hidden && me && !me.must_change) loadAll(true); }, 30000);
 }
 

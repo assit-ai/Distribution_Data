@@ -151,6 +151,7 @@ app.post('/api/login', wrap(async (req, res) => {
   }
 
   fails.delete(key);
+  await pool.query('update users set must_change=false where id=$1', [r.rows[0].id]);
   req.session = { uid: r.rows[0].id };
   res.json({ ok: true });
 }));
