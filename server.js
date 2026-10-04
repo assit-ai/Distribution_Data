@@ -29,7 +29,6 @@ app.use((req, res, next) => {
   next();
 });
 
-const CATS = ['Frozen', 'Chicken', 'Egg', 'Dairy', 'Others'];
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const wrap = fn => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 const lc = s => String(s || '').trim().toLowerCase();
@@ -46,6 +45,9 @@ async function init() {
       id serial primary key, username text unique not null, password_hash text not null,
       name text not null default '', role text not null default 'depot' check (role in ('admin','depot')),
       depots text[] not null default '{}', created_at timestamptz not null default now());
+    create table if not exists categories(
+      id serial primary key, name text unique not null, display_order int not null default 0,
+      created_at timestamptz not null default now());
     create table if not exists entries(
       id serial primary key, entry_date date not null, depot text not null, category text not null,
       orders int not null default 0, delivered int not null default 0,
@@ -72,6 +74,18 @@ async function init() {
     alter table reports add column if not exists top_depot text not null default '';
     alter table reports add column if not exists low_depot text not null default '';
   `);
+
+  // Default Categories initialization
+  const catCount = await pool.query('select count(*)::int n from categories');
+  if (catCount.rows[0].n === 0) {
+    const defaultCats = ['Frozen', 'Chicken', 'Egg', 'Dairy', 'Others'];
+    for (let i = 0; i < defaultCats.length; i++) {
+      await pool.query('insert into categories(name, display_order) values($1, $2) on conflict do nothing', [defaultCats[i], (i + 1) * 10]);
+    }
+    console.log('Default categories initialized');
+  }
+
+  // First admin initialization
   const c = await pool.query('select count(*)::int n from users');
   if (c.rows[0].n === 0) {
     const u = process.env.ADMIN_USERNAME || 'admin', p = process.env.ADMIN_PASSWORD;
@@ -80,6 +94,11 @@ async function init() {
       [lc(u), await bcrypt.hash(p, 10), 'Admin', 'admin']);
     console.log('First admin toiri hoyeche:', lc(u));
   }
+}
+
+async function getAllCategories() {
+  const r = await pool.query('select name from categories order by display_order, id');
+  return r.rows.map(x => x.name);
 }
 
 // ---------- auth ----------
@@ -118,6 +137,37 @@ app.post('/api/logout', (req, res) => { req.session = null; res.json({ ok: true 
 app.get('/api/me', auth, (req, res) => res.json(req.user));
 app.get('/api/depots', auth, wrap(async (req, res) => res.json({ depots: await allDepots() })));
 
+// ---------- categories management (dynamic) ----------
+app.get('/api/categories', auth, wrap(async (req, res) => {
+  const r = await pool.query('select id, name, display_order from categories order by display_order, id');
+  res.json({ categories: r.rows.map(x => x.name), details: r.rows });
+}));
+
+app.post('/api/categories', auth, admin, wrap(async (req, res) => {
+  const name = String(req.body.name || '').trim();
+  if (!name || name.length > 50) return res.status(400).json({ error: 'Category name dorkar (max 50 characters)' });
+  try {
+    const maxOrderRes = await pool.query('select coalesce(max(display_order), 0) + 10 as next_order from categories');
+    const nextOrder = maxOrderRes.rows[0].next_order;
+    await pool.query('insert into categories(name, display_order) values($1, $2)', [name, nextOrder]);
+    res.json({ ok: true, name });
+  } catch (e) {
+    if (e.code === '23505') return res.status(409).json({ error: 'Ei Category name ageii ache' });
+    throw e;
+  }
+}));
+
+app.delete('/api/categories/:name', auth, admin, wrap(async (req, res) => {
+  const name = String(req.params.name || '').trim();
+  if (!name) return res.status(400).json({ error: 'Category name dorkar' });
+  const countRes = await pool.query('select count(*)::int n from entries where lower(category)=lower($1)', [name]);
+  if (countRes.rows[0].n > 0) {
+    return res.status(400).json({ error: `Ei category te ${countRes.rows[0].n} ti entry ache, tai delete kora jabe na.` });
+  }
+  await pool.query('delete from categories where lower(name)=lower($1)', [name]);
+  res.json({ ok: true });
+}));
+
 // ---------- entries ----------
 app.get('/api/entries', auth, wrap(async (req, res) => {
   const d = String(req.query.date || '');
@@ -131,7 +181,11 @@ app.get('/api/entries', auth, wrap(async (req, res) => {
 app.put('/api/entries', auth, wrap(async (req, res) => {
   const b = req.body, date = String(b.date || '');
   if (!DATE.test(date)) return res.status(400).json({ error: 'Date thik nai' });
-  if (!CATS.includes(b.category)) return res.status(400).json({ error: 'Category thik nai' });
+  
+  const allCats = await getAllCategories();
+  const cat = allCats.find(c => lc(c) === lc(b.category));
+  if (!cat) return res.status(400).json({ error: 'Category thik nai' });
+
   const depot = findDepot(await allowedDepots(req.user), b.depot);
   if (!depot) return res.status(403).json({ error: 'Ei depot e data dewar anumoti nai' });
   const orders = nonNeg(b.orders), delivered = nonNeg(b.delivered), stock = nonNeg(b.stock), avg = nonNeg(b.avg_daily);
@@ -140,7 +194,7 @@ app.put('/api/entries', auth, wrap(async (req, res) => {
   await pool.query(`insert into entries(entry_date,depot,category,orders,delivered,stock,avg_daily,updated_by,updated_at)
     values($1,$2,$3,$4,$5,$6,$7,$8,now())
     on conflict(entry_date,depot,category) do update set orders=$4,delivered=$5,stock=$6,avg_daily=$7,updated_by=$8,updated_at=now()`,
-    [date, depot, b.category, Math.round(orders), Math.round(delivered), stock, avg, req.user.id]);
+    [date, depot, cat, Math.round(orders), Math.round(delivered), stock, avg, req.user.id]);
   res.json({ ok: true });
 }));
 
@@ -160,12 +214,13 @@ app.post('/api/bulk/entries', auth, wrap(async (req, res) => {
   if (!Array.isArray(items) || !items.length) return res.status(400).json({ error: 'Data list khali' });
 
   const allowed = await allowedDepots(req.user);
+  const allCats = await getAllCategories();
   let updated = 0, skipped = 0;
 
   for (const it of items) {
     const depot = findDepot(allowed, it.depot);
     if (!depot) { skipped++; continue; }
-    const cat = CATS.find(c => lc(c) === lc(it.category));
+    const cat = allCats.find(c => lc(c) === lc(it.category));
     if (!cat) { skipped++; continue; }
 
     const o = it.orders != null && it.orders !== '' ? nonNeg(it.orders) : null;
