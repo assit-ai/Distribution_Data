@@ -28,7 +28,7 @@ app.head(['/healthz', '/ping', '/api/health'], (req, res) => {
 app.use(express.json({ limit: '2mb' }));
 app.use(cookieSession({
   name: 'dup', keys: [process.env.SESSION_SECRET || 'dev-only-secret'],
-  maxAge: 12 * 60 * 60 * 1000, httpOnly: true, sameSite: 'lax', secure: prod
+  httpOnly: true, sameSite: 'lax', secure: prod
 }));
 
 // Mutating requests must be JSON (basic CSRF protection along with sameSite cookie)

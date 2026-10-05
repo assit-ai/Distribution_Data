@@ -1389,7 +1389,11 @@ async function api(method, url, body) {
   const res = await fetch(url, opts);
   let json = {};
   try { json = await res.json(); } catch(e) {}
-  if (res.status === 401 && me) { location.reload(); return; }
+  if (res.status === 401 && me) {
+    sessionStorage.removeItem('dup_tab_session');
+    location.reload();
+    return;
+  }
   if (!res.ok) throw new Error(json.error || ('Server error: ' + res.status));
   return json;
 }
@@ -1509,10 +1513,22 @@ async function delCategory(name) {
 
 // Initial Boot
 async function boot() {
+  // If the browser tab was closed or opened anew without an active tab session, require login
+  if (!sessionStorage.getItem('dup_tab_session')) {
+    try { await api('POST', '/api/logout', {}); } catch (e) {}
+    me = null;
+    $('app').classList.add('hid');
+    $('login').classList.remove('hid');
+    renderLoginSuggestions();
+    return;
+  }
+
   try {
     me = await api('GET', '/api/me');
   } catch (e) {
+    sessionStorage.removeItem('dup_tab_session');
     me = null;
+    $('app').classList.add('hid');
     $('login').classList.remove('hid');
     renderLoginSuggestions();
     return;
@@ -3095,6 +3111,7 @@ async function doLogin(ev) {
   if (btn) { btn.textContent = 'Signing in...'; btn.disabled = true; }
   try {
     await api('POST', '/api/login', { username: u, password: p });
+    sessionStorage.setItem('dup_tab_session', 'active');
     
     // Save user ID for future suggestion/pre-fill on logout
     recordSuccessfulUser(u);
@@ -3123,6 +3140,7 @@ async function doLogin(ev) {
 }
 
 async function doLogout() {
+  sessionStorage.removeItem('dup_tab_session');
   try { await api('POST', '/api/logout', {}); } catch (e) {}
   // Keep the last successfully authenticated username in localStorage for suggestion
   if (me && me.username) {
