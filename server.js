@@ -335,7 +335,7 @@ app.get('/api/entries', auth, wrap(async (req, res) => {
   let query, params;
 
   if (!isRange) {
-    query = `select to_char(e.entry_date,'YYYY-MM-DD') date, e.depot, e.category, e.orders, e.delivered,
+    query = `select to_char(e.entry_date,'YYYY-MM-DD') date, e.depot, e.category, e.orders::float8 orders, e.delivered::float8 delivered,
       e.stock::float8 stock, e.avg_daily::float8 avg_daily, coalesce(e.remarks, '') remarks, e.updated_at, u.name "by"
       from entries e left join users u on u.id=e.updated_by where e.entry_date=$1`;
     params = [from];
@@ -359,8 +359,8 @@ app.get('/api/entries', auth, wrap(async (req, res) => {
         $2 as date,
         e.depot,
         e.category,
-        sum(e.orders) as orders,
-        sum(e.delivered) as delivered,
+        sum(e.orders)::float8 as orders,
+        sum(e.delivered)::float8 as delivered,
         coalesce(ls.stock, 0)::float8 as stock,
         coalesce(ls.avg_daily, 0)::float8 as avg_daily,
         coalesce(string_agg(distinct e.remarks, '; ') filter (where e.remarks <> ''), '') as remarks,

@@ -2109,7 +2109,14 @@ async function loadAll(quiet = false) {
       api('GET', '/api/dispatches?' + dParam).catch(() => ({ dispatches: [] })),
       api('GET', '/api/registered-vans').catch(() => ({ vans: [] }))
     ]);
-    ents = entRes.entries;
+    // Postgres `numeric` columns arrive as strings; coerce so sums don't concatenate
+    ents = (entRes.entries || []).map(r => ({
+      ...r,
+      orders: num(r.orders),
+      delivered: num(r.delivered),
+      stock: num(r.stock),
+      avg_daily: num(r.avg_daily)
+    }));
     deps = depRes.depots;
     vehicles = fltRes.vehicles;
     dispatches = dspRes.dispatches || [];
