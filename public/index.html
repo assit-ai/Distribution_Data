@@ -512,6 +512,7 @@ tr:hover td { background: rgba(0,0,0,0.015); }
         <button class="s sm" onclick="setQuickDate('yesterday')" style="padding:4px 7px; font-size:11px;" title="View Yesterday">Yesterday</button>
         <button class="s sm" onclick="setQuickDate('mtd')" style="padding:4px 7px; font-size:11px;" title="Month to Date">MTD</button>
       </div>
+      <button class="sm adm" onclick="openClearDataModal()" style="padding:4px 9px; font-size:12px; font-weight:700; background:var(--bad-bg); color:var(--bad); border:1px solid rgba(239, 68, 68, 0.4); border-radius:6px; cursor:pointer;" title="Clear/delete data for specific date or date range">🗑️ Clear Data</button>
       <button class="sm" onclick="showPw(true)">Change Password</button>
       <button class="sm" onclick="doLogout()">Logout</button>
     </div>
@@ -548,6 +549,19 @@ tr:hover td { background: rgba(0,0,0,0.015); }
     <!-- TAB 1: EXECUTIVE DASHBOARD & REPORT -->
     <!-- ========================================== -->
     <div id="tab-dash" class="adm">
+      <!-- Admin Dashboard Controls & Clear Data Toolbar -->
+      <div class="card adm" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; padding:10px 16px; margin-bottom:14px; background:var(--card); border:1px solid var(--bd);">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="font-weight:700; font-size:13px; color:var(--tx);">🛠️ Admin Quick Tools:</span>
+          <span class="sub" style="font-size:12px;">Active Date: <b id="dash_active_date_label" style="color:var(--ac)">–</b></span>
+        </div>
+        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+          <button class="sm p" onclick="setTab('bulk')" style="font-size:12px;">⚡ Poloxy Auto Sync</button>
+          <button class="sm" onclick="setTab('fleet')" style="font-size:12px;">🚚 Fleet Logs</button>
+          <button class="sm bad" onclick="openClearDataModal()" style="font-size:12px; font-weight:700; background:var(--bad-bg); color:var(--bad); border:1px solid rgba(239, 68, 68, 0.4); padding:5px 12px; border-radius:6px; cursor:pointer;" title="Clear/delete data for specific date or date range">🗑️ Clear Data</button>
+        </div>
+      </div>
+
       <!-- KPI Metric Cards (All with Clickable Hyperlink Drill-downs) -->
       <div class="kpi-grid">
         <!-- 1. Today GT Frozen Sales (Clickable Hyperlink to Sales Modal) -->
@@ -1292,52 +1306,14 @@ Savar	Egg	42000	7500" oninput="parsePastedTable()"></textarea>
       <div class="card" style="margin-top:20px; background:var(--bg); border:1px solid rgba(239, 68, 68, 0.3); border-radius:8px; padding:16px;">
         <div class="card-header" style="margin-bottom:8px;">
           <div class="card-title" style="font-size:14px; color:var(--bad);">🗑️ Clear / Purge Data by Date Range</div>
+          <button class="bad sm" onclick="openClearDataModal()" style="font-weight:700;">🗑️ Launch Clear Data Tool</button>
         </div>
         <p class="sub" style="margin-bottom:12px; font-size:12px;">
-          Cleanly delete incorrectly entered, duplicate, or test data for a selected date range. Action requires confirmation and cannot be undone.
+          Cleanly delete incorrectly entered, duplicate, or test data for a selected date or date range. Action requires confirmation and cannot be undone.
         </p>
-        <div class="g" style="grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap:10px; margin-bottom:12px;">
-          <div>
-            <label>From Date</label>
-            <input type="date" id="purge_from">
-          </div>
-          <div>
-            <label>To Date</label>
-            <input type="date" id="purge_to">
-          </div>
-          <div>
-            <label>Filter Depot</label>
-            <select id="purge_depot">
-              <option value="all">All Depots</option>
-            </select>
-          </div>
-          <div>
-            <label>Filter Category</label>
-            <select id="purge_cat">
-              <option value="all">All Categories</option>
-            </select>
-          </div>
-        </div>
-        <div style="display:flex; flex-wrap:wrap; gap:16px; margin-bottom:14px; font-size:12px;">
-          <label style="display:flex; align-items:center; gap:5px; margin:0; cursor:pointer;">
-            <input type="checkbox" id="chk_purge_entries" checked style="width:auto;"> Depot Entries (Orders/Delivered/Stock)
-          </label>
-          <label style="display:flex; align-items:center; gap:5px; margin:0; cursor:pointer;">
-            <input type="checkbox" id="chk_purge_dispatches" checked style="width:auto;"> Vehicle Dispatches Logs
-          </label>
-          <label style="display:flex; align-items:center; gap:5px; margin:0; cursor:pointer;">
-            <input type="checkbox" id="chk_purge_vehicles" checked style="width:auto;"> Depot Fleet Vehicles Status
-          </label>
-          <label style="display:flex; align-items:center; gap:5px; margin:0; cursor:pointer;">
-            <input type="checkbox" id="chk_purge_reports" style="width:auto;"> Sales Executive Summary Report
-          </label>
-        </div>
-        <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
-          <button class="bad" onclick="doClearDataRange()" style="padding:8px 16px; font-weight:700;">
-            🗑️ Clear Data in Range
-          </button>
-          <div id="purge_status_msg" style="font-size:12px;"></div>
-        </div>
+        <button class="bad" onclick="openClearDataModal()" style="padding:8px 16px; font-weight:700; display:inline-flex; align-items:center; gap:6px;">
+          🗑️ Open Clear Data Window
+        </button>
       </div>
     </div>
   </div>
@@ -1747,6 +1723,96 @@ Savar	Egg	42000	7500" oninput="parsePastedTable()"></textarea>
   </div>
 </div>
 
+<!-- ============================================================ -->
+<!-- MODAL: CLEAR / PURGE DATA BY DATE OR DATE RANGE (ADMIN ONLY) -->
+<!-- ============================================================ -->
+<div id="modal-clear-data" class="modal-overlay hid" onclick="if(event.target===this)closeClearDataModal()">
+  <div class="modal-box" style="max-width:620px;">
+    <div class="modal-header" style="border-bottom:1px solid rgba(239, 68, 68, 0.25);">
+      <div class="modal-title" style="color:var(--bad); display:flex; align-items:center; gap:8px;">
+        <span>🗑️ Clear Data (Date / Date Range)</span>
+      </div>
+      <button class="modal-close" onclick="closeClearDataModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div style="background:var(--bad-bg); border-left:4px solid var(--bad); padding:10px 14px; border-radius:6px; margin-bottom:14px;">
+        <div style="font-weight:700; color:var(--bad); font-size:13px; margin-bottom:2px;">⚠️ Caution: Permanent Data Removal</div>
+        <div class="sub" style="font-size:12px; color:var(--tx);">
+          This tool allows administrators to delete wrongly entered, duplicate, or test data for a single date or across a custom date range. Once deleted, records cannot be recovered.
+        </div>
+      </div>
+
+      <!-- Quick Preset Buttons -->
+      <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:12px;">
+        <span style="font-size:12px; font-weight:600; color:var(--mut);">Quick Presets:</span>
+        <button type="button" class="s sm" onclick="setClearDataPreset('current')" title="Use currently selected Dashboard date range">📅 Current Dashboard</button>
+        <button type="button" class="s sm" onclick="setClearDataPreset('today')">Today</button>
+        <button type="button" class="s sm" onclick="setClearDataPreset('yesterday')">Yesterday</button>
+        <button type="button" class="s sm" onclick="setClearDataPreset('mtd')">Month to Date (MTD)</button>
+      </div>
+
+      <!-- Date Inputs -->
+      <div class="g" style="grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:14px;">
+        <div>
+          <label style="font-weight:600; font-size:12px;">From Date *</label>
+          <input type="date" id="purge_from" required style="padding:7px 10px;">
+        </div>
+        <div>
+          <label style="font-weight:600; font-size:12px;">To Date *</label>
+          <input type="date" id="purge_to" required style="padding:7px 10px;">
+        </div>
+      </div>
+
+      <!-- Filters -->
+      <div class="g" style="grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:14px;">
+        <div>
+          <label style="font-weight:600; font-size:12px;">Depot Filter</label>
+          <select id="purge_depot" style="padding:7px 10px;">
+            <option value="all">-- All Depots --</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-weight:600; font-size:12px;">Category Filter</label>
+          <select id="purge_cat" style="padding:7px 10px;">
+            <option value="all">-- All Categories --</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- What to clear checkboxes -->
+      <div style="background:var(--bg); border:1px solid var(--bd); border-radius:8px; padding:12px; margin-bottom:16px;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <span style="font-size:12px; font-weight:700; color:var(--tx);">Select Tables / Data to Clear:</span>
+          <button type="button" class="s sm" onclick="toggleAllPurgeChecks()" style="font-size:11px; padding:2px 6px;">Toggle All</button>
+        </div>
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:8px; font-size:12px;">
+          <label style="display:flex; align-items:center; gap:6px; margin:0; cursor:pointer;">
+            <input type="checkbox" id="chk_purge_entries" checked style="width:auto;"> Depot Entries (Orders/Delivered/Stock)
+          </label>
+          <label style="display:flex; align-items:center; gap:6px; margin:0; cursor:pointer;">
+            <input type="checkbox" id="chk_purge_dispatches" checked style="width:auto;"> Dispatched Vans Log (Routes/Times)
+          </label>
+          <label style="display:flex; align-items:center; gap:6px; margin:0; cursor:pointer;">
+            <input type="checkbox" id="chk_purge_vehicles" checked style="width:auto;"> Depot Fleet Vehicles Status
+          </label>
+          <label style="display:flex; align-items:center; gap:6px; margin:0; cursor:pointer;">
+            <input type="checkbox" id="chk_purge_reports" checked style="width:auto;"> Sales Targets & Issues Report
+          </label>
+        </div>
+      </div>
+
+      <!-- Action row -->
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+        <button type="button" class="bad" id="btn_do_clear_data" onclick="doClearDataRange()" style="padding:9px 18px; font-weight:700; font-size:13px; display:inline-flex; align-items:center; gap:6px; cursor:pointer;">
+          🗑️ Clear Data for Selected Range
+        </button>
+        <button type="button" class="s" onclick="closeClearDataModal()" style="padding:9px 16px;">Cancel</button>
+      </div>
+      <div id="purge_status_msg" style="margin-top:12px; font-size:13px;"></div>
+    </div>
+  </div>
+</div>
+
 <script>
 let CATS = ['Frozen', 'Chicken', 'Egg', 'Dairy', 'Others'];
 let me = null, deps = [], ents = [], vehicles = [], users = [], dispatches = [], registeredVans = [];
@@ -2126,6 +2192,14 @@ function getCategoryTotals() {
 
 // Render UI Components
 function renderAll() {
+  // Update dashboard active date label
+  const curF = $('date') ? $('date').value : '';
+  const curT = ($('date_to') && $('date_to').value) ? $('date_to').value : curF;
+  const activeDateEl = $('dash_active_date_label');
+  if (activeDateEl) {
+    activeDateEl.textContent = (!curF) ? '–' : (curF === curT ? curF : `${curF} to ${curT}`);
+  }
+
   // 1. KPI Cards
   const catTotals = getCategoryTotals();
   let totOrders = 0, totDelivered = 0;
@@ -4020,29 +4094,86 @@ async function delErpDepot(id) {
 }
 
 // ========================================================
-// PURGE / CLEAR DATA BY DATE RANGE (ADMIN)
+// PURGE / CLEAR DATA BY DATE OR DATE RANGE (ADMIN)
 // ========================================================
+function openClearDataModal() {
+  populatePurgeDropdowns();
+  const f = $('date') ? $('date').value : '';
+  const t = ($('date_to') && $('date_to').value) ? $('date_to').value : f;
+  if ($('purge_from')) $('purge_from').value = f;
+  if ($('purge_to')) $('purge_to').value = t;
+
+  const statusEl = $('purge_status_msg');
+  if (statusEl) statusEl.innerHTML = '';
+  $('modal-clear-data').classList.remove('hid');
+}
+
+function closeClearDataModal() {
+  $('modal-clear-data').classList.add('hid');
+}
+
+function setClearDataPreset(type) {
+  const local = new Date(Date.now() - new Date().getTimezoneOffset() * 60000);
+  const todayStr = local.toISOString().slice(0, 10);
+  if (type === 'current') {
+    const f = $('date') ? $('date').value : todayStr;
+    const t = ($('date_to') && $('date_to').value) ? $('date_to').value : f;
+    if ($('purge_from')) $('purge_from').value = f;
+    if ($('purge_to')) $('purge_to').value = t;
+  } else if (type === 'today') {
+    if ($('purge_from')) $('purge_from').value = todayStr;
+    if ($('purge_to')) $('purge_to').value = todayStr;
+  } else if (type === 'yesterday') {
+    const yest = new Date(local);
+    yest.setDate(yest.getDate() - 1);
+    const yestStr = yest.toISOString().slice(0, 10);
+    if ($('purge_from')) $('purge_from').value = yestStr;
+    if ($('purge_to')) $('purge_to').value = yestStr;
+  } else if (type === 'mtd') {
+    const mtdStart = todayStr.slice(0, 8) + '01';
+    if ($('purge_from')) $('purge_from').value = mtdStart;
+    if ($('purge_to')) $('purge_to').value = todayStr;
+  }
+}
+
+function toggleAllPurgeChecks() {
+  const c1 = $('chk_purge_entries'), c2 = $('chk_purge_dispatches'), c3 = $('chk_purge_vehicles'), c4 = $('chk_purge_reports');
+  if (!c1) return;
+  const anyUnchecked = !c1.checked || !c2.checked || !c3.checked || !c4.checked;
+  c1.checked = anyUnchecked;
+  c2.checked = anyUnchecked;
+  c3.checked = anyUnchecked;
+  c4.checked = anyUnchecked;
+}
+
 async function doClearDataRange() {
   const from_date = $('purge_from') ? $('purge_from').value : '';
   const to_date = $('purge_to') ? $('purge_to').value : '';
   if (!from_date || !to_date) return msg('Please select valid From and To dates to clear');
 
-  const clear_entries = $('chk_purge_entries').checked;
-  const clear_dispatches = $('chk_purge_dispatches').checked;
-  const clear_vehicles = $('chk_purge_vehicles').checked;
-  const clear_reports = $('chk_purge_reports').checked;
-  const depot = $('purge_depot').value;
-  const category = $('purge_cat').value;
+  const clear_entries = $('chk_purge_entries') ? $('chk_purge_entries').checked : true;
+  const clear_dispatches = $('chk_purge_dispatches') ? $('chk_purge_dispatches').checked : true;
+  const clear_vehicles = $('chk_purge_vehicles') ? $('chk_purge_vehicles').checked : true;
+  const clear_reports = $('chk_purge_reports') ? $('chk_purge_reports').checked : true;
+  const depot = $('purge_depot') ? $('purge_depot').value : 'all';
+  const category = $('purge_cat') ? $('purge_cat').value : 'all';
 
   if (!clear_entries && !clear_dispatches && !clear_vehicles && !clear_reports) {
     return msg('Please select at least one data type checkbox to clear');
   }
 
-  const promptMsg = `⚠️ CAUTION: Are you sure you want to permanently DELETE selected records between ${from_date} and ${to_date}?\n\nFilters: Depot=${depot}, Category=${category}\nThis action CANNOT be undone!`;
+  const isSingle = from_date === to_date;
+  const dateDesc = isSingle ? `Date: ${from_date}` : `Date Range: ${from_date} to ${to_date}`;
+  const promptMsg = `⚠️ CAUTION: Are you sure you want to permanently DELETE selected records for ${dateDesc}?\n\nFilters: Depot=${depot}, Category=${category}\nThis action CANNOT be undone!`;
   if (!confirm(promptMsg)) return;
 
   const statusEl = $('purge_status_msg');
-  if (statusEl) statusEl.innerHTML = `<span style="color:var(--warn); font-weight:600;">⏳ Deleting data in range...</span>`;
+  const btn = $('btn_do_clear_data');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = '⏳ Clearing data...';
+  }
+  if (statusEl) statusEl.innerHTML = `<span style="color:var(--warn); font-weight:600;">⏳ Deleting records for ${esc(dateDesc)}...</span>`;
 
   try {
     const res = await api('POST', '/api/admin/clear-data', {
@@ -4058,16 +4189,21 @@ async function doClearDataRange() {
 
     const summaryText = `Deleted total ${res.total_deleted} records (Entries: ${res.deleted_entries}, Dispatches: ${res.deleted_dispatches}, Vehicles: ${res.deleted_vehicles}, Reports: ${res.deleted_reports})`;
     if (statusEl) {
-      statusEl.innerHTML = `<span style="color:var(--ok); font-weight:600;">✓ ${summaryText}</span>`;
+      statusEl.innerHTML = `<div style="background:var(--ok-bg); color:var(--ok); padding:8px 12px; border-radius:6px; font-weight:700; margin-top:8px;">✓ ${summaryText}</div>`;
     }
     msg(`Data cleared successfully: ${res.total_deleted} records removed ✓`, true);
     await loadAll(true);
     await loadDispatches(true);
   } catch (err) {
     if (statusEl) {
-      statusEl.innerHTML = `<span style="color:var(--bad); font-weight:600;">✗ Clear data failed: ${esc(err.message)}</span>`;
+      statusEl.innerHTML = `<div style="background:var(--bad-bg); color:var(--bad); padding:8px 12px; border-radius:6px; font-weight:700; margin-top:8px;">✗ Clear data failed: ${esc(err.message)}</div>`;
     }
     msg('Clear data error: ' + err.message);
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = '🗑️ Clear Data for Selected Range';
+    }
   }
 }
 
