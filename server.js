@@ -93,6 +93,7 @@ async function init() {
       driver_name text not null default '', destination text not null default '',
       status text not null default 'dispatched', notes text not null default '',
       created_by int references users(id) on delete set null, created_at timestamptz not null default now());
+    alter table entries add column if not exists remarks text not null default '';
     create table if not exists registered_vans(
       id serial primary key, depot text not null,
       vehicle_no text not null, driver_name text not null default '',
@@ -335,7 +336,7 @@ app.get('/api/entries', auth, wrap(async (req, res) => {
 
   if (!isRange) {
     query = `select to_char(e.entry_date,'YYYY-MM-DD') date, e.depot, e.category, e.orders, e.delivered,
-      e.stock::float8 stock, e.avg_daily::float8 avg_daily, e.updated_at, u.name "by"
+      e.stock::float8 stock, e.avg_daily::float8 avg_daily, coalesce(e.remarks, '') remarks, e.updated_at, u.name "by"
       from entries e left join users u on u.id=e.updated_by where e.entry_date=$1`;
     params = [from];
     if (req.user.role !== 'admin') {
@@ -362,6 +363,7 @@ app.get('/api/entries', auth, wrap(async (req, res) => {
         sum(e.delivered) as delivered,
         coalesce(ls.stock, 0)::float8 as stock,
         coalesce(ls.avg_daily, 0)::float8 as avg_daily,
+        coalesce(string_agg(distinct e.remarks, '; ') filter (where e.remarks <> ''), '') as remarks,
         max(e.updated_at) as updated_at,
         'Range Summary' as "by"
       from entries e
@@ -395,15 +397,15 @@ app.put('/api/entries', auth, wrap(async (req, res) => {
 
   const orders = nonNeg(b.orders), delivered = nonNeg(b.delivered), stock = nonNeg(b.stock), avg = nonNeg(b.avg_daily);
   if ([orders, delivered, stock, avg].includes(null)) return res.status(400).json({ error: 'Invalid numerical values' });
-  if (delivered > orders) return res.status(400).json({ error: 'Delivered quantity cannot exceed Orders' });
   
   const finalOrders = cat === 'Chicken' ? orders : Math.round(orders);
   const finalDelivered = cat === 'Chicken' ? delivered : Math.round(delivered);
+  const remarks = String(b.remarks || '').trim();
 
-  await pool.query(`insert into entries(entry_date,depot,category,orders,delivered,stock,avg_daily,updated_by,updated_at)
-    values($1,$2,$3,$4,$5,$6,$7,$8,now())
-    on conflict(entry_date,depot,category) do update set orders=$4,delivered=$5,stock=$6,avg_daily=$7,updated_by=$8,updated_at=now()`,
-    [date, depot, cat, finalOrders, finalDelivered, stock, avg, req.user.id]);
+  await pool.query(`insert into entries(entry_date,depot,category,orders,delivered,stock,avg_daily,remarks,updated_by,updated_at)
+    values($1,$2,$3,$4,$5,$6,$7,$8,$9,now())
+    on conflict(entry_date,depot,category) do update set orders=$4,delivered=$5,stock=$6,avg_daily=$7,remarks=$8,updated_by=$9,updated_at=now()`,
+    [date, depot, cat, finalOrders, finalDelivered, stock, avg, remarks, req.user.id]);
   res.json({ ok: true });
 }));
 
@@ -687,17 +689,20 @@ app.post('/api/auto-sync', auth, admin, wrap(async (req, res) => {
         const finalOrders = cat === 'Chicken' ? ordVal : Math.round(ordVal);
         const finalDelivered = cat === 'Chicken' ? delVal : Math.round(delVal);
 
+        const remarksVal = String(it.remarks || '').trim();
+
         await pool.query(`
-          insert into entries(entry_date, depot, category, orders, delivered, stock, avg_daily, updated_by, updated_at)
-          values($1, $2, $3, $4, $5, $6, $7, $8, now())
+          insert into entries(entry_date, depot, category, orders, delivered, stock, avg_daily, remarks, updated_by, updated_at)
+          values($1, $2, $3, $4, $5, $6, $7, $8, $9, now())
           on conflict(entry_date, depot, category) do update set
             orders = excluded.orders,
             delivered = excluded.delivered,
             stock = excluded.stock,
             avg_daily = excluded.avg_daily,
+            remarks = excluded.remarks,
             updated_by = excluded.updated_by,
             updated_at = now()
-        `, [itDate, depot, cat, finalOrders, finalDelivered, stkVal, avgVal, req.user.id]);
+        `, [itDate, depot, cat, finalOrders, finalDelivered, stkVal, avgVal, remarksVal, req.user.id]);
         saved++;
       }
 

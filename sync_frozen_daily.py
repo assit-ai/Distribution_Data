@@ -560,6 +560,25 @@ def run_category_sync(client, cat_key, cat_conf, start_date_str, end_date_str, s
         orders = round(orders_map.get(code, 0.0), 1 if unit == 'Kg' else 0)
         delivered = round(delivered_map.get(code, 0.0), 1 if unit == 'Kg' else 0)
         pending = max(0.0, round(orders - delivered, 1 if unit == 'Kg' else 0))
+        variance = round(delivered - orders, 1 if unit == 'Kg' else 0)
+
+        # Operational variance reasoning
+        dep_name_lower = str(depots_dict[code].get('name', '')).lower()
+        is_factory = 'factory' in dep_name_lower or 'ashulia' in dep_name_lower or 'gazipur' in dep_name_lower
+
+        if delivered > orders:
+            diff_str = f"{variance:,.1f}" if unit == 'Kg' else f"{int(variance):,}"
+            if is_factory:
+                reason = f"ডেলিভারি বেশি (+{diff_str} {unit}): ফ্যাক্টরি বাল্ক ও পূর্ববর্তী ব্যাকলগ চালান সরবরাহ"
+            else:
+                reason = f"ডেলিভারি বেশি (+{diff_str} {unit}): বিগত দিনের পেন্ডিং/ব্যাকলগ অর্ডার সরবরাহ"
+        elif orders > delivered:
+            diff_str = f"{pending:,.1f}" if unit == 'Kg' else f"{int(pending):,}"
+            reason = f"পেন্ডিং (-{diff_str} {unit}): আজকের অর্ডারের চালান প্রক্রিয়াধীন / ইন-ট্রানজিট"
+        elif orders > 0:
+            reason = "১০০% সম্পূর্ণ সরবরাহ (100% Fulfilled)"
+        else:
+            reason = "কার্যক্রম নেই (No Activity)"
 
         avg_daily = round(delivered / num_days, 1) if num_days > 0 else delivered
         cover = round(stock / avg_daily, 1) if avg_daily > 0 else 999.0
@@ -575,6 +594,8 @@ def run_category_sync(client, cat_key, cat_conf, start_date_str, end_date_str, s
             'orders': orders,
             'delivered': delivered,
             'pending': pending,
+            'variance': variance,
+            'remarks': reason,
             'avg_daily': avg_daily,
             'stock_cover': cover
         })

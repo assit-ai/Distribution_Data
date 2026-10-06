@@ -636,6 +636,17 @@ tr:hover td { background: rgba(0,0,0,0.015); }
         </div>
       </div>
 
+      <!-- Order vs Delivery Variance & Backlog Insights Card -->
+      <div class="card" id="card_variance_insights" style="border-left: 4px solid var(--primary); background: linear-gradient(to right, rgba(37,99,235,0.04), transparent);">
+        <div class="card-header">
+          <div class="card-title" style="display:flex; align-items:center; gap:8px;">
+            <span>📊 Order vs Delivery Variance & Backlog Analysis (অর্ডার বনাম ডেলিভারির অমিল ও কারণ বিশ্লেষণ)</span>
+          </div>
+          <span class="sub" style="font-size:12px; color:var(--mut);">স্বয়ংক্রিয় ব্যাকলগ ও ডেলিভারি বিশ্লেষণ (Frozen, Chicken, Egg ও অন্যান্য)</span>
+        </div>
+        <div id="variance_insights_content" style="padding:4px 0;"></div>
+      </div>
+
       <!-- Category Distribution Summary Table -->
       <div class="card">
         <div class="card-header">
@@ -649,7 +660,7 @@ tr:hover td { background: rgba(0,0,0,0.015); }
                 <th>Category</th>
                 <th class="num">Orders</th>
                 <th class="num">Delivered</th>
-                <th class="num">Pending</th>
+                <th class="center">Pending / Variance (পার্থক্য)</th>
                 <th class="num">Stock</th>
                 <th class="num">Avg Daily</th>
                 <th class="center">Stock Cover</th>
@@ -700,7 +711,11 @@ tr:hover td { background: rgba(0,0,0,0.015); }
             <div><label id="lbl_s">Closing Stock (Pkt)</label><input id="s" type="number" min="0"></div>
             <div><label id="lbl_a">Avg Daily Sale (Pkt)</label><input id="a" type="number" min="0"></div>
           </div>
-          <div class="btn-row">
+          <div style="margin-top:12px;">
+            <label>Variance Reason / Operational Remarks (পার্থক্যের কারণ / মন্তব্য)</label>
+            <input id="entry_remarks" placeholder="যেমন: বিগত দিনের ব্যাকলগ সরবরাহ / Modern Trade বাল্ক চালান / প্রসেসিং পেন্ডিং" style="width:100%;">
+          </div>
+          <div class="btn-row" style="margin-top:12px;">
             <button class="p" onclick="saveEntry()">Save Category Entry</button>
             <button class="sm" onclick="clearEntryForm()">Clear Form</button>
           </div>
@@ -805,10 +820,11 @@ tr:hover td { background: rgba(0,0,0,0.015); }
                 <th>Category</th>
                 <th class="num">Orders</th>
                 <th class="num">Delivered</th>
-                <th class="num">Pending</th>
+                <th class="center">Variance / Status</th>
                 <th class="num">Stock</th>
                 <th class="num">Avg/day</th>
                 <th class="center">Cover</th>
+                <th>পার্থক্যের কারণ / Remarks</th>
                 <th>Submitted By</th>
                 <th>Action</th>
               </tr>
@@ -1646,12 +1662,12 @@ Savar	Egg	42000	7500" oninput="parsePastedTable()"></textarea>
               <th>Depot Name</th>
               <th class="num">Orders</th>
               <th class="num">Delivered</th>
-              <th class="num" style="color:var(--warn)">Pending</th>
+              <th class="center">Pending / Variance</th>
               <th class="center">Fulfillment</th>
               <th class="num">Closing Stock</th>
               <th class="num">Avg Daily</th>
               <th class="center">Stock Cover</th>
-              <th>Status</th>
+              <th>Status / Reason (পার্থক্য ও কারণ)</th>
               <th>Action</th>
             </tr>
           </thead>
@@ -2249,10 +2265,25 @@ function renderAll() {
   // 2. Summary Category Table (Interactive Hyperlinks & Drill-downs)
   $('tt').innerHTML = CATS.map(c => {
     const x = catTotals[c] || { o: 0, v: 0, s: 0, a: 0, p: 0, n: 0 };
-    const p = x.p != null ? x.p : Math.max(0, x.o - x.v);
+    const o = x.o || 0;
+    const v = x.v || 0;
     const cov = x.a > 0 ? (x.s / x.a).toFixed(1) : '–';
     const covClass = x.a > 0 && (x.s / x.a) < 3 ? 'cover-bad' : 'cover-ok';
     const u = getCatUnit(c);
+
+    let varBadge = '';
+    if (v > o) {
+      const diff = v - o;
+      varBadge = `<span class="badge" style="background:var(--ok-bg); color:var(--ok); font-weight:700;" title="ডেলিভারি বেশি (+${fmt(diff)} ${u}): পূর্ববর্তী ব্যাকলগ ও বাল্ক চালান সরবরাহ">+${fmt(diff)} (ডেলিভারি বেশি)</span>`;
+    } else if (o > v) {
+      const diff = o - v;
+      varBadge = `<span class="badge" style="background:var(--warn-bg); color:var(--warn); font-weight:700;" title="পেন্ডিং (-${fmt(diff)} ${u}): আজকের বুকিং এখনো সরবরাহ বাকি">-${fmt(diff)} (পেন্ডিং)</span>`;
+    } else if (o > 0) {
+      varBadge = `<span class="badge" style="background:var(--primary-bg); color:var(--primary);">0 (সমন্বিত ✓)</span>`;
+    } else {
+      varBadge = `<span class="sub">—</span>`;
+    }
+
     return `<tr>
       <td>
         <span class="cat-name-link" onclick="openCategoryModal('${esc(c)}', 'all')" title="Click to view depot-wise breakdown for ${esc(c)}">
@@ -2260,13 +2291,13 @@ function renderAll() {
         </span>
       </td>
       <td class="num cell-clickable" onclick="openCategoryModal('${esc(c)}', 'orders')" title="Click to view ${esc(c)} Orders by depot">
-        ${fmt(x.o)}
+        ${fmt(o)}
       </td>
       <td class="num cell-clickable" onclick="openCategoryModal('${esc(c)}', 'delivered')" title="Click to view ${esc(c)} Delivered by depot">
-        ${fmt(x.v)}
+        ${fmt(v)}
       </td>
-      <td class="num cell-clickable" onclick="openCategoryModal('${esc(c)}', 'pending')" title="Click to view ${esc(c)} Pending deliveries by depot" style="color:var(--warn); font-weight:700;">
-        ${fmt(p)}
+      <td class="center cell-clickable" onclick="openCategoryModal('${esc(c)}', 'pending')" title="Click to view ${esc(c)} Pending/Variance by depot">
+        ${varBadge}
       </td>
       <td class="num cell-clickable" onclick="openCategoryModal('${esc(c)}', 'stock')" title="Click to view ${esc(c)} Closing Stock by depot">
         ${fmt(x.s)}
@@ -2280,25 +2311,60 @@ function renderAll() {
     </tr>`;
   }).join('');
 
+  // Render Operational Variance & Backlog Analysis Insights Card
+  renderVarianceInsights();
+
   // 3. Depot Detailed Entries Table
   $('tb').innerHTML = ents.length ? ents.map((r, i) => {
     const canEdit = allowed().some(d => lc(d) === lc(r.depot));
     const cov = r.avg_daily > 0 ? (r.stock / r.avg_daily).toFixed(1) : '–';
     const covClass = r.avg_daily > 0 && (r.stock / r.avg_daily) < 3 ? 'cover-bad' : 'cover-ok';
     const u = getCatUnit(r.category);
+
+    const o = r.orders || 0;
+    const v = r.delivered || 0;
+    let varBadge = '';
+    let autoReason = r.remarks || '';
+
+    const depNameLower = String(r.depot || '').toLowerCase();
+    const isFactory = depNameLower.includes('factory') || depNameLower.includes('ashulia') || depNameLower.includes('gazipur');
+
+    if (v > o) {
+      const diff = v - o;
+      varBadge = `<span class="badge" style="background:var(--ok-bg); color:var(--ok); font-weight:700;">+${fmt(diff)}</span>`;
+      if (!autoReason) {
+        autoReason = isFactory
+          ? `ফ্যাক্টরি বাল্ক ও পূর্ববর্তী ব্যাকলগ চালান সরবরাহ (+${fmt(diff)} ${u})`
+          : `বিগত দিনের ব্যাকলগ/পেন্ডিং চালান সরবরাহ (+${fmt(diff)} ${u})`;
+      }
+    } else if (o > v) {
+      const diff = o - v;
+      varBadge = `<span class="badge" style="background:var(--warn-bg); color:var(--warn); font-weight:700;">-${fmt(diff)}</span>`;
+      if (!autoReason) {
+        autoReason = `আজকের অর্ডার পেন্ডিং / প্রসেসিং (-${fmt(diff)} ${u})`;
+      }
+    } else if (o > 0) {
+      varBadge = `<span class="sub" style="color:var(--ok); font-weight:600;">0 ✓</span>`;
+      if (!autoReason) autoReason = `১০০% সম্পূর্ণ সরবরাহ`;
+    } else {
+      varBadge = `<span class="sub">—</span>`;
+      if (!autoReason) autoReason = `কার্যক্রম নেই`;
+    }
+
     return `<tr>
       <td><b>${esc(r.depot)}</b></td>
       <td>${esc(r.category)} <span class="sub" style="font-size:11px;">(${u})</span></td>
-      <td class="num">${fmt(r.orders)}</td>
-      <td class="num">${fmt(r.delivered)}</td>
-      <td class="num" style="color:var(--warn)">${fmt(r.orders - r.delivered)}</td>
+      <td class="num">${fmt(o)}</td>
+      <td class="num">${fmt(v)}</td>
+      <td class="center">${varBadge}</td>
       <td class="num">${fmt(r.stock)}</td>
       <td class="num">${fmt(r.avg_daily)}</td>
       <td class="center"><span class="cover-pill ${covClass}">${cov}</span></td>
+      <td style="font-size:12px; max-width:280px;" title="${esc(autoReason)}"><b>${esc(autoReason)}</b></td>
       <td class="sub">${esc(r.by || '')}</td>
       <td>${canEdit ? `<button class="sm" onclick="editEntry(${i})">Edit</button> <button class="sm" style="color:var(--bad)" onclick="delEntry(${i})">×</button>` : ''}</td>
     </tr>`;
-  }).join('') : `<tr><td colspan="10" class="center sub" style="padding:16px;">No entries recorded for this date.</td></tr>`;
+  }).join('') : `<tr><td colspan="11" class="center sub" style="padding:16px;">No entries recorded for this date.</td></tr>`;
 
   // 4. Fleet Live Tracking Table
   const fleetDepotSet = new Set(deps);
@@ -2334,6 +2400,90 @@ function renderAll() {
   }).join('');
 }
 
+// Render Operational Variance & Backlog Insights Across All Categories
+function renderVarianceInsights() {
+  const container = $('variance_insights_content');
+  if (!container) return;
+
+  const catTotals = getCategoryTotals();
+  const insights = [];
+
+  CATS.forEach(c => {
+    const x = catTotals[c];
+    if (!x || (x.o === 0 && x.v === 0)) return;
+    const u = getCatUnit(c);
+    const o = x.o || 0;
+    const v = x.v || 0;
+    const diff = Math.abs(v - o);
+
+    // Depot-level contributors
+    const catEnts = ents.filter(r => lc(r.category) === lc(c));
+    const overDepots = [];
+    const pendingDepots = [];
+
+    catEnts.forEach(r => {
+      const ro = r.orders || 0;
+      const rv = r.delivered || 0;
+      if (rv > ro) {
+        overDepots.push(`${r.depot} (+${fmt(rv - ro)} ${u})`);
+      } else if (ro > rv) {
+        pendingDepots.push(`${r.depot} (-${fmt(ro - rv)} ${u})`);
+      }
+    });
+
+    if (v > o) {
+      insights.push(`
+        <div style="padding:10px 14px; background:var(--card); border:1px solid var(--bd); border-radius:8px; margin-bottom:8px; display:flex; flex-direction:column; gap:4px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+            <span style="font-size:14px; font-weight:700; color:var(--tx);">
+              📦 <b>${esc(c)}</b> (${u}): ডেলিভারি <span style="color:var(--ok);">${fmt(v)}</span> বনাম সেলস অর্ডার <span>${fmt(o)}</span>
+            </span>
+            <span class="badge" style="background:var(--ok-bg); color:var(--ok); font-size:12px; font-weight:700;">
+              ⚠️ ডেলিভারি বেশি (+${fmt(diff)} ${u} / +${pct(diff, o)}%)
+            </span>
+          </div>
+          <div style="font-size:12.5px; color:var(--tx); line-height:1.4;">
+            <b>💡 অমিল / পার্থক্যের কারণ:</b> সেদিনের নতুন বুকিংয়ের তুলনায় <b>বিগত দিনের জমে থাকা ব্যাকলগ/পেন্ডিং অর্ডার</b> এবং ফ্যাক্টরি থেকে বাল্ক চালান (Modern Trade / আউটলেট) বেশি পরিমাণে সরবরাহ হয়েছে।
+            ${overDepots.length ? `<br><span style="font-size:11.5px; color:var(--mut);">অতিরিক্ত ডেলিভারি হওয়া ডিপোসমূহ: <b>${esc(overDepots.join(', '))}</b></span>` : ''}
+          </div>
+        </div>
+      `);
+    } else if (o > v) {
+      insights.push(`
+        <div style="padding:10px 14px; background:var(--card); border:1px solid var(--bd); border-radius:8px; margin-bottom:8px; display:flex; flex-direction:column; gap:4px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+            <span style="font-size:14px; font-weight:700; color:var(--tx);">
+              ⏳ <b>${esc(c)}</b> (${u}): সেলস অর্ডার <span style="color:var(--warn);">${fmt(o)}</span> বনাম ডেলিভারি <span>${fmt(v)}</span>
+            </span>
+            <span class="badge" style="background:var(--warn-bg); color:var(--warn); font-size:12px; font-weight:700;">
+              পেন্ডিং ডেলিভারি (-${fmt(diff)} ${u})
+            </span>
+          </div>
+          <div style="font-size:12.5px; color:var(--tx); line-height:1.4;">
+            <b>💡 স্ট্যাটাস:</b> আজকের বুকিংকৃত অর্ডারের সম্পূর্ণ চালান এখনো প্রস্তুত/সরবরাহ হয়নি, যা বর্তমানে প্রসেসিং বা ইন-ট্রানজিটে রয়েছে।
+            ${pendingDepots.length ? `<br><span style="font-size:11.5px; color:var(--mut);">পেন্ডিং থাকা ডিপোসমূহ: <b>${esc(pendingDepots.join(', '))}</b></span>` : ''}
+          </div>
+        </div>
+      `);
+    } else {
+      insights.push(`
+        <div style="padding:8px 14px; background:var(--card); border:1px solid var(--bd); border-radius:8px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+          <span style="font-size:13px; font-weight:600; color:var(--tx);">
+            ✓ <b>${esc(c)}</b> (${u}): সেলস অর্ডার (${fmt(o)}) ও ডেলিভারি (${fmt(v)}) ১০০% সম্পূর্ণ সমন্বিত
+          </span>
+          <span class="badge" style="background:var(--primary-bg); color:var(--primary);">100% Fulfilled</span>
+        </div>
+      `);
+    }
+  });
+
+  if (!insights.length) {
+    container.innerHTML = '<div class="sub" style="padding:8px 12px;">এই তারিখের কোনো অর্ডার বা ডেলিভারি ডাটা পাওয়া যায়নি।</div>';
+  } else {
+    container.innerHTML = insights.join('');
+  }
+}
+
 // Save Entry
 async function saveEntry() {
   try {
@@ -2344,8 +2494,9 @@ async function saveEntry() {
     const v = num($('v').value);
     const s = num($('s').value);
     const a = num($('a').value);
+    const remarks = $('entry_remarks') ? $('entry_remarks').value.trim() : '';
 
-    await api('PUT', '/api/entries', { date: d, depot: dep, category: cat, orders: o, delivered: v, stock: s, avg_daily: a });
+    await api('PUT', '/api/entries', { date: d, depot: dep, category: cat, orders: o, delivered: v, stock: s, avg_daily: a, remarks });
     msg('Category entry saved successfully ✓', true);
     clearEntryForm();
     await loadAll(true);
@@ -2356,6 +2507,7 @@ async function saveEntry() {
 
 function clearEntryForm() {
   ['o', 'v', 's', 'a'].forEach(id => $(id).value = '');
+  if ($('entry_remarks')) $('entry_remarks').value = '';
 }
 
 function editEntry(idx) {
@@ -2366,6 +2518,7 @@ function editEntry(idx) {
   $('v').value = r.delivered;
   $('s').value = r.stock;
   $('a').value = r.avg_daily;
+  if ($('entry_remarks')) $('entry_remarks').value = r.remarks || '';
   setTab('entry');
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
@@ -2493,7 +2646,15 @@ function genReport() {
   CATS.forEach(c => {
     const x = catTotals[c] || { o: 0, v: 0, s: 0, a: 0 };
     const u = getCatUnit(c);
-    L.push(`- ${c}: Orders ${fmt(x.o)} ${u} | Delivered ${fmt(x.v)} ${u} | Pending ${fmt(x.o - x.v)} ${u}`);
+    const o = x.o || 0;
+    const v = x.v || 0;
+    if (v > o) {
+      L.push(`- ${c}: Orders ${fmt(o)} ${u} | Delivered ${fmt(v)} ${u} (Over-Delivered +${fmt(v - o)} ${u} via backlog / factory supply)`);
+    } else if (o > v) {
+      L.push(`- ${c}: Orders ${fmt(o)} ${u} | Delivered ${fmt(v)} ${u} | Pending ${fmt(o - v)} ${u}`);
+    } else {
+      L.push(`- ${c}: Orders ${fmt(o)} ${u} | Delivered ${fmt(v)} ${u} (100% Fulfilled ✓)`);
+    }
   });
 
   L.push(`- Total Dispatched Vans: ${totVehiclesDispatched} (On Road: ${totVehiclesOnRoad})`);
@@ -3093,15 +3254,41 @@ function renderCategoryModal(catName, sortCol = 'all') {
   tb.innerHTML = sorted.map(r => {
     const o = r.orders || 0;
     const v = r.delivered || 0;
-    const p = Math.max(0, o - v);
     const fPct = pct(v, o);
-    const fPill = fPct >= 90 ? 'cover-ok' : (fPct >= 60 ? 'cover-pill' : 'cover-bad');
+    const fPill = v > o ? 'badge-depot' : (fPct >= 90 ? 'cover-ok' : (fPct >= 60 ? 'cover-pill' : 'cover-bad'));
     const cov = r.avg_daily > 0 ? (r.stock / r.avg_daily).toFixed(1) : '–';
     const covClass = r.avg_daily > 0 && (r.stock / r.avg_daily) < 3 ? 'cover-bad' : 'cover-ok';
 
+    let varPill = '';
+    let autoReason = r.remarks || '';
+    const depNameLower = String(r.depot || '').toLowerCase();
+    const isFactory = depNameLower.includes('factory') || depNameLower.includes('ashulia') || depNameLower.includes('gazipur');
+
+    if (v > o) {
+      const diff = v - o;
+      varPill = `<span class="badge" style="background:var(--ok-bg); color:var(--ok); font-weight:700;">+${fmt(diff)}</span>`;
+      if (!autoReason) {
+        autoReason = isFactory
+          ? `ফ্যাক্টরি বাল্ক ও ব্যাকলগ সরবরাহ (+${fmt(diff)} ${u})`
+          : `বিগত দিনের ব্যাকলগ সরবরাহ (+${fmt(diff)} ${u})`;
+      }
+    } else if (o > v) {
+      const diff = o - v;
+      varPill = `<span class="badge" style="background:var(--warn-bg); color:var(--warn); font-weight:700;">-${fmt(diff)}</span>`;
+      if (!autoReason) {
+        autoReason = `আজকের অর্ডার পেন্ডিং (-${fmt(diff)} ${u})`;
+      }
+    } else if (o > 0) {
+      varPill = `<span class="sub" style="color:var(--ok); font-weight:600;">0 ✓</span>`;
+      if (!autoReason) autoReason = `১০০% সম্পূর্ণ সরবরাহ`;
+    } else {
+      varPill = `<span class="sub">—</span>`;
+      if (!autoReason) autoReason = `কার্যক্রম নেই`;
+    }
+
     const tdOrdersStyle = sortCol === 'orders' ? 'style="background:rgba(2, 61, 127, 0.08); font-weight:700;"' : '';
     const tdDeliveredStyle = sortCol === 'delivered' ? 'style="background:rgba(16, 185, 129, 0.08); font-weight:700;"' : '';
-    const tdPendingStyle = sortCol === 'pending' ? 'style="background:rgba(245, 158, 11, 0.18); font-weight:700; color:var(--warn);"' : 'style="color:var(--warn); font-weight:700;"';
+    const tdPendingStyle = sortCol === 'pending' ? 'style="background:rgba(245, 158, 11, 0.18); font-weight:700;"' : '';
     const tdStockStyle = sortCol === 'stock' ? 'style="background:rgba(2, 61, 127, 0.08); font-weight:700;"' : '';
     const tdCoverStyle = sortCol === 'cover' ? 'style="background:rgba(239, 68, 68, 0.1);"' : '';
 
@@ -3109,12 +3296,12 @@ function renderCategoryModal(catName, sortCol = 'all') {
       <td><b>${esc(r.depot)}</b></td>
       <td class="num" ${tdOrdersStyle}>${fmt(o)}</td>
       <td class="num" ${tdDeliveredStyle}>${fmt(v)}</td>
-      <td class="num" ${tdPendingStyle}>${fmt(p)}</td>
+      <td class="center" ${tdPendingStyle}>${varPill}</td>
       <td class="center"><span class="cover-pill ${fPill}">${fPct}%</span></td>
       <td class="num" ${tdStockStyle}>${fmt(r.stock)}</td>
       <td class="num">${fmt(r.avg_daily)}</td>
       <td class="center" ${tdCoverStyle}><span class="cover-pill ${covClass}">${cov} days</span></td>
-      <td>${p === 0 ? '<span class="badge badge-admin">Fulfilled ✓</span>' : '<span class="badge cover-bad">Pending ⏳</span>'}</td>
+      <td style="font-size:12px; max-width:240px;" title="${esc(autoReason)}"><b>${esc(autoReason)}</b></td>
       <td>
         <button class="sm" onclick="closeCategoryModal(); $('dep').value='${esc(r.depot)}'; $('cat').value='${esc(catName)}'; syncDepotEntryForm(); setTab('entry');">View / Edit</button>
       </td>
