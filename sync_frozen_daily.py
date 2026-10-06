@@ -1,7 +1,10 @@
 """
-Automated Poloxy ERP Sync for Daily Update Portal - Frozen Foods Category
-Author: Antigravity AI
-Paragon Agro Ltd.
+Automated Poloxy ERP Sync for Daily Update Portal
+Categories Supported:
+  1. Frozen Foods (02. Frozen Foods) - Unit: Pkt
+  2. Process Chicken (01. Process Chicken) - Unit: Kg
+  3. Branded Egg (03. Branded Eggs) - Unit: Pcs
+Author: Antigravity AI | Paragon Agro Ltd.
 """
 
 import os
@@ -14,11 +17,10 @@ import http.cookiejar
 import time
 from datetime import datetime, timedelta
 import concurrent.futures
-
 import functools
+
 print = functools.partial(print, flush=True)
 
-# Ensure UTF-8 output on Windows console
 if sys.stdout.encoding and sys.stdout.encoding.lower() != 'utf-8':
     try:
         sys.stdout.reconfigure(encoding='utf-8')
@@ -34,39 +36,128 @@ BASE_URL = os.environ.get("POLOXY_URL", "http://erp.paragon.com.bd").rstrip('/')
 USERNAME = os.environ.get("POLOXY_USER", "a0162e0019")
 PASSWORD = os.environ.get("POLOXY_PASS", "pal.123456")
 
-# Target Frozen Food Depots mapping
-DEPOT_CONFIG = {
-    'tejgaon02': {
-        'name': '02. Frozen Foods Tejgaon Depot',
-        'godown_id': 'G206',
-        'ref_patterns': ['02.TG', '02. TEJGAON', '02.TG-FZ']
+# Default Built-in Category & Depot Configurations
+DEFAULT_CONFIG = {
+    'Frozen': {
+        'name': '02. Frozen Foods',
+        'branch_id': 'B0002',
+        'item_group': 'CUT-Up-Part',
+        'group_id': '17',
+        'unit': 'Pkt',
+        'dn_qty_field': 'qty', # Primary unit quantity
+        'so_qty_col': 10,      # Bag / primary qty
+        'depots': {
+            'tejgaon02': {
+                'name': '02. Frozen Foods Tejgaon Depot',
+                'godown_id': 'G206',
+                'ref_patterns': ['02.TG', '02. TEJGAON', '02.TG-FZ', '02 TG', 'TEJGAON']
+            },
+            'ctg02': {
+                'name': '02. Frozen Foods Chittagong Depot',
+                'godown_id': 'G7',
+                'ref_patterns': ['02.CTG', '02. CTG', '02 CTG', '02.CHITTAGONG', 'CHITTAGONG']
+            },
+            'ashulia02': {
+                'name': '02. Frozen Foods Factory Godown',
+                'godown_id': 'G5',
+                'ref_patterns': ['02. FROZEN FOOD', '02.FROZEN FOOD', '02 FACTORY', '02.FACTORY', '02.ASH', 'ASHULIA']
+            },
+            'mohakhali02': {
+                'name': '02. Frozen Foods HO Godown',
+                'godown_id': 'G6',
+                'ref_patterns': ['02.HO', '02. HO', '02 HO', '02.MHK', 'MOHAKHALI']
+            },
+            'jessore02': {
+                'name': '02. Frozen Foods Jessore Depot',
+                'godown_id': 'G256',
+                'ref_patterns': ['02 JD', '02.JD', '02.JESSORE', '02. JESSORE', 'JESSORE']
+            },
+            'sylhet02': {
+                'name': '02. Frozen Foods Sylhet Depot',
+                'godown_id': 'G167',
+                'ref_patterns': ['02.SYLHET', '02. SYLHET', '02 SYLHET', '02.SYL', 'SYLHET']
+            }
+        }
     },
-    'ctg02': {
-        'name': '02. Frozen Foods Chittagong Depot',
-        'godown_id': 'G7',
-        'ref_patterns': ['02.CTG', '02. CTG', '02.CHITTAGONG']
+    'Chicken': {
+        'name': '01. Process Chicken',
+        'branch_id': 'B0001',
+        'item_group': 'CUT-Up-Part',
+        'group_id': '17',
+        'unit': 'Kg',
+        'default_depot': 'gazipur01', # If Ref. No. is blank, defaults to Factory
+        'dn_qty_field': 'qty',         # Primary unit quantity in Kg
+        'so_qty_col': 11,             # Max. Qty.(Kg) column
+        'depots': {
+            'tejgaon01': {
+                'name': '01. Process Tejgaon Depot',
+                'godown_id': 'G205',
+                'ref_patterns': ['01.TG', '01. TEJGAON', '01 TG', '01.TEJGAON', '01TG']
+            },
+            'ctg01': {
+                'name': '01. Process Chittagong Depot',
+                'godown_id': 'G4',
+                'ref_patterns': ['01.CTG', '01. CTG', '01 CTG', '01.CHITTAGONG', '01CTG']
+            },
+            'gazipur01': {
+                'name': '01. Process Factory Godown',
+                'godown_id': 'G2',
+                'ref_patterns': ['01 FACTORY', '01.FACTORY', '01.GAZIPUR', 'GAZIPUR', 'FACTORY']
+            },
+            'jessore01': {
+                'name': '01. Process Jessore Depot',
+                'godown_id': 'G255',
+                'ref_patterns': ['01 JD', '01.JD', '01.JESSORE', '01 JD', '01JD']
+            },
+            'sylhet01': {
+                'name': '01. Process Sylhet Depot',
+                'godown_id': 'G166',
+                'ref_patterns': ['01.SYLHET', '01. SYLHET', '01 SYLHET', '01SYL', '01.SYL']
+            }
+        }
     },
-    'ashulia02': {
-        'name': '02. Frozen Foods Factory Godown',
-        'godown_id': 'G5',
-        'ref_patterns': ['02. FROZEN FOOD', '02.FROZEN FOOD', '02 FACTORY', '02.FACTORY', '02.ASH', 'ASHULIA']
-    },
-    'mohakhali02': {
-        'name': '02. Frozen Foods HO Godown',
-        'godown_id': 'G6',
-        'ref_patterns': ['02.HO', '02. HO', '02.MHK', 'MOHAKHALI']
-    },
-    'jessore02': {
-        'name': '02. Frozen Foods Jessore Depot',
-        'godown_id': 'G256',
-        'ref_patterns': ['02 JD', '02.JD', '02.JESSORE', '02. JESSORE']
-    },
-    'sylhet02': {
-        'name': '02. Frozen Foods Sylhet Depot',
-        'godown_id': 'G167',
-        'ref_patterns': ['02.SYLHET', '02. SYLHET', '02.SYL']
+    'Egg': {
+        'name': '03. Branded Eggs',
+        'branch_id': 'B0003',
+        'item_group': 'PACKED EGGS',
+        'group_id': '35',
+        'unit': 'Pcs',
+        'default_depot': 'tejgaon03',
+        'dn_qty_field': 'sec_qty',    # Secondary unit quantity in Pcs
+        'so_qty_col': 11,             # Max. Qty.(Kg) column is Pcs
+        'egg_mode': True,             # Special multiplier rule (12 pcs -> 12x)
+        'depots': {
+            'tejgaon03': {
+                'name': '03. Branded Egg HO Godown',
+                'godown_id': 'G9',
+                'additional_godowns': [
+                    {'name': '03. Branded Egg Tejgaon Depot', 'godown_id': 'G207'}
+                ],
+                'ref_patterns': [
+                    '03HO', '003.HO', '03.HO', '03. HO', '03 HO', '003HO',
+                    '03.TG', '03TG', '03. TEJGAON', '03 TEJGAON'
+                ]
+            }
+        }
     }
 }
+
+def load_extended_configs():
+    """Load any custom or newly added depot mappings from depot_mappings.json (managed by admin web portal)."""
+    cfg = dict(DEFAULT_CONFIG)
+    mapping_file = os.path.join(os.path.dirname(__file__), 'depot_mappings.json')
+    if os.path.exists(mapping_file):
+        try:
+            with open(mapping_file, 'r', encoding='utf-8') as f:
+                custom = json.load(f)
+            for cat, details in custom.items():
+                if cat in cfg and 'depots' in details:
+                    cfg[cat]['depots'].update(details['depots'])
+                elif cat not in cfg:
+                    cfg[cat] = details
+        except Exception as e:
+            print(f"[!] Warning: Could not read depot_mappings.json: {e}")
+    return cfg
 
 def clean_num(v):
     if v is None:
@@ -79,15 +170,32 @@ def clean_num(v):
     except ValueError:
         return 0.0
 
-def match_depot_from_ref(ref_str, default_depot=None):
+def match_depot_from_ref(ref_str, depots_dict, default_depot=None):
     r = str(ref_str or '').upper().strip()
     if not r:
         return default_depot
 
-    for code, conf in DEPOT_CONFIG.items():
-        for pat in conf['ref_patterns']:
-            if pat in r:
+    # Normalized version: remove spaces, dots, dashes
+    clean_r = re.sub(r'[^A-Z0-9]', '', r)
+
+    # 1. Exact match on raw pattern
+    for code, conf in depots_dict.items():
+        for pat in conf.get('ref_patterns', []):
+            if pat.upper() in r:
                 return code
+
+    # 2. Normalized alphanumeric check
+    for code, conf in depots_dict.items():
+        for pat in conf.get('ref_patterns', []):
+            clean_pat = re.sub(r'[^A-Z0-9]', '', pat.upper())
+            if clean_pat and (clean_pat in clean_r or clean_r in clean_pat):
+                return code
+
+    # 3. Code direct match
+    for code in depots_dict:
+        if code.upper() in clean_r:
+            return code
+
     return default_depot
 
 class PoloxyClient:
@@ -137,7 +245,7 @@ class PoloxyClient:
         req4 = urllib.request.Request(st_url, data=urllib.parse.urlencode(inputs2).encode('utf-8'),
                                       headers={**self.headers, 'Referer': resp3.url})
         self.opener.open(req4, timeout=30)
-        
+
         # Pre-initialize stock report JSP
         try:
             self.opener.open(urllib.request.Request(f"{self.base_url}/COMMON/r_jsp/godownitemstockreport.jsp", headers=self.headers), timeout=20)
@@ -145,11 +253,7 @@ class PoloxyClient:
             pass
         print(" -> ERP Context established.")
 
-    def fetch_godown_stock(self, depot_code, date_str):
-        conf = DEPOT_CONFIG[depot_code]
-        godown_name = conf['name']
-        godown_id = conf['godown_id']
-
+    def fetch_godown_stock_single(self, godown_name, godown_id, item_group, group_id, date_str, is_egg=False):
         stock_url = f"{self.base_url}/COMMON/GodownItemStockReport"
         form_data = {
             'item_godown_stock_radio': 'Godownwise',
@@ -157,8 +261,8 @@ class PoloxyClient:
             'data_gdstock_godown': godown_name,
             'gdstock_godown': godown_id,
             'stock_type': '0',
-            'data_cstock_item_grp': 'CUT-Up-Part',
-            'cstock_item_grp': '17',
+            'data_cstock_item_grp': item_group,
+            'cstock_item_grp': group_id,
             'data_cstock_category_name': '',
             'category_id': '',
             'data_cstock_item_name': '',
@@ -177,12 +281,11 @@ class PoloxyClient:
             headers={**self.headers, 'Referer': f"{self.base_url}/COMMON/r_jsp/godownitemstockreport.jsp"}
         )
 
-        html = ""
         try:
             resp = self.opener.open(req, timeout=90)
             html = resp.read().decode('utf-8', errors='ignore')
         except Exception as e:
-            print(f"    [!] Note: Stock query for {depot_code} ({godown_name}) timed out or busy on ERP ({e}). Defaulting to 0.")
+            print(f"    [!] Note: Stock query for {godown_name} ({godown_id}) timed out ({e}). Defaulting to 0.")
             return 0.0
 
         total_stock = 0.0
@@ -191,18 +294,51 @@ class PoloxyClient:
             cells = [re.sub(r'<[^>]+>', '', c).strip() for c in re.findall(r'<t[dh][^>]*>(.*?)</t[dh]>', tr, re.DOTALL)]
             if len(cells) >= 13:
                 code = cells[0]
+                name = cells[1] if len(cells) > 1 else ''
                 closing_qty = clean_num(cells[12])
                 if code and not any(w in code.lower() for w in ['item code', 'total', 'type', 'quantity']):
-                    total_stock += closing_qty
+                    if is_egg:
+                        # Egg multiplier rule: If SKU has "12 pcs" / "12-pack" / "12 pcs pkt" in name, multiply by 12
+                        lower_name = name.lower()
+                        if '12 pcs' in lower_name or '12-pack' in lower_name or '12pcs' in lower_name or '12 pkt' in lower_name or '12p' in lower_name:
+                            total_stock += (closing_qty * 12.0)
+                        else:
+                            total_stock += closing_qty
+                    else:
+                        total_stock += closing_qty
 
         return total_stock
 
-    def fetch_sales_orders(self, date_str):
-        print(f"[*] Fetching Sales Orders for {date_str}...")
+    def fetch_depot_stock(self, depot_code, depot_conf, cat_conf, date_str):
+        godown_name = depot_conf['name']
+        godown_id = depot_conf['godown_id']
+        grp = cat_conf['item_group']
+        grp_id = cat_conf['group_id']
+        is_egg = bool(cat_conf.get('egg_mode'))
+
+        tot = self.fetch_godown_stock_single(godown_name, godown_id, grp, grp_id, date_str, is_egg=is_egg)
+
+        # If depot has additional associated godowns (e.g. tejgaon03 HO + Tejgaon Depot)
+        for add_g in depot_conf.get('additional_godowns', []):
+            try:
+                tot += self.fetch_godown_stock_single(add_g['name'], add_g['godown_id'], grp, grp_id, date_str, is_egg=is_egg)
+            except Exception as e:
+                print(f"    [!] Error querying additional godown {add_g['name']}: {e}")
+
+        return tot
+
+    def fetch_sales_orders(self, cat_conf, date_str):
+        branch_name = cat_conf['name']
+        branch_id = cat_conf['branch_id']
+        qty_col = cat_conf.get('so_qty_col', 10)
+        depots_dict = cat_conf['depots']
+        default_depot = cat_conf.get('default_depot')
+
+        print(f"[*] Fetching Sales Orders for {branch_name} ({date_str})...")
         so_url = f"{self.base_url}/COMMON/dt_sale_order_status_report"
         form_data = {
-            'branch_name': '02. Frozen Foods',
-            'hidden_branch_id': 'B0002',
+            'branch_name': branch_name,
+            'hidden_branch_id': branch_id,
             'customer_name': '',
             'hidd_customer_id': '',
             'start_date': date_str,
@@ -217,29 +353,32 @@ class PoloxyClient:
         resp = self.opener.open(req, timeout=120)
         html = resp.read().decode('utf-8', errors='ignore')
 
-        orders_by_depot = {k: 0.0 for k in DEPOT_CONFIG}
+        orders_by_depot = {k: 0.0 for k in depots_dict}
         trs = re.findall(r'<tr[^>]*>.*?</tr>', html, re.DOTALL | re.IGNORECASE)
         for tr in trs:
             cells = [re.sub(r'<[^>]+>', '', c).strip() for c in re.findall(r'<t[dh][^>]*>(.*?)</t[dh]>', tr, re.DOTALL)]
             if len(cells) < 12 or cells[0] == 'Sr.No.' or 'Internet Explorer' in cells[0]:
                 continue
             ref_no = cells[4] if len(cells) > 4 else ''
-            bag_qty = clean_num(cells[10]) if len(cells) > 10 else 0.0
+            qty = clean_num(cells[qty_col]) if len(cells) > qty_col else 0.0
 
-            depot = match_depot_from_ref(ref_no)
+            depot = match_depot_from_ref(ref_no, depots_dict, default_depot=default_depot)
             if depot and depot in orders_by_depot:
-                orders_by_depot[depot] += bag_qty
+                orders_by_depot[depot] += qty
 
         return orders_by_depot
 
-    def fetch_delivery_notes(self, start_date_str, end_date_str):
-        print(f"[*] Fetching Delivery Notes from {start_date_str} to {end_date_str}...")
+    def fetch_delivery_notes(self, cat_conf, start_date_str, end_date_str):
+        branch_name = cat_conf['name']
+        branch_id = cat_conf['branch_id']
+        print(f"[*] Fetching Delivery Notes for {branch_name} from {start_date_str} to {end_date_str}...")
+
         dn_url = f"{self.base_url}/COMMON/Ag_consignee_deliverynote_rpt"
         form_data = {
             'Orderwise': 'Deliverywise',
             'chk1': 'ShowDetails',
-            'data_fm_sale_branch': '02. Frozen Foods',
-            'fm_sale_branch': 'B0002',
+            'data_fm_sale_branch': branch_name,
+            'fm_sale_branch': branch_id,
             'fm_sale_start_dt': start_date_str,
             'fm_sale_end_dt': end_date_str,
             'fromm': '01/10/2022',
@@ -255,7 +394,6 @@ class PoloxyClient:
         resp = self.opener.open(req, timeout=120)
         html = resp.read().decode('utf-8', errors='ignore')
 
-        # rowData JSON extraction
         start_idx = html.find('rowData =[')
         if start_idx == -1:
             start_idx = html.find('rowData = [')
@@ -264,7 +402,6 @@ class PoloxyClient:
             prefix_len = len('rowData =[')
 
         if start_idx == -1:
-            # Fallback to HTML table parse
             return []
 
         end_idx = html.find('];', start_idx)
@@ -273,50 +410,38 @@ class PoloxyClient:
             return []
 
         try:
-            rows = json.loads(f"[{raw_json}]")
-            return rows
+            return json.loads(f"[{raw_json}]")
         except Exception:
             return []
 
 
-def run_frozen_sync(target_date_str=None, export_excel=False):
-    now = datetime.now()
-    if not target_date_str:
-        target_date_str = now.strftime("%d/%m/%Y")
-    
-    target_dt = datetime.strptime(target_date_str, "%d/%m/%Y")
-    date_iso = target_dt.strftime("%Y-%m-%d")
+def run_category_sync(client, cat_key, cat_conf, target_date_str, target_dt, mtd_start_str, mtd_days, seven_days_ago_dt):
+    depots_dict = cat_conf['depots']
+    default_depot = cat_conf.get('default_depot')
+    qty_field = cat_conf.get('dn_qty_field', 'qty')
+    unit = cat_conf.get('unit', 'Qty')
 
-    # MTD Start Date: 01 of current month
-    mtd_start_str = f"01/{target_dt.strftime('%m/%Y')}"
-    mtd_days = target_dt.day
-
-    # 7 Days Range
-    seven_days_ago_dt = target_dt - timedelta(days=6)
-    seven_days_str = seven_days_ago_dt.strftime("%d/%m/%Y")
-
-    print("\n" + "=" * 70)
-    print(f"[*] PARAGON AGRO - FROZEN FOODS DAILY SYNC PIPELINE")
-    print(f"[*] Target Date : {target_date_str} (MTD: {mtd_start_str} to {target_date_str})")
-    print("=" * 70)
-
-    client = PoloxyClient()
-    client.authenticate()
+    print(f"\n{'='*70}")
+    print(f"[*] PROCESSING CATEGORY: {cat_key.upper()} ({cat_conf['name']}) [Unit: {unit}]")
+    print(f"{'='*70}")
 
     # 1. Fetch Sales Orders for Target Date
-    orders_map = client.fetch_sales_orders(target_date_str)
+    orders_map = client.fetch_sales_orders(cat_conf, target_date_str)
 
-    # 2. Fetch Delivery Notes (From MTD start to today covers MTD, 7-days, and today)
-    delivery_rows = client.fetch_delivery_notes(mtd_start_str, target_date_str)
-    print(f" -> Found {len(delivery_rows):,} delivery transactions in MTD period.")
+    # 2. Fetch Delivery Notes (MTD Range)
+    delivery_rows = client.fetch_delivery_notes(cat_conf, mtd_start_str, target_date_str)
+    print(f" -> Found {len(delivery_rows):,} delivery transactions in MTD period for {cat_key}.")
 
-    # Location name to depot mapping
-    loc_to_depot = {conf['name']: code for code, conf in DEPOT_CONFIG.items()}
+    # Name mapping
+    loc_to_depot = {}
+    for code, conf in depots_dict.items():
+        loc_to_depot[conf['name']] = code
+        for add_g in conf.get('additional_godowns', []):
+            loc_to_depot[add_g['name']] = code
 
-    # Aggregate deliveries
-    today_delivered_map = {k: 0.0 for k in DEPOT_CONFIG}
-    mtd_delivered_map = {k: 0.0 for k in DEPOT_CONFIG}
-    seven_d_delivered_map = {k: 0.0 for k in DEPOT_CONFIG}
+    today_delivered_map = {k: 0.0 for k in depots_dict}
+    mtd_delivered_map = {k: 0.0 for k in depots_dict}
+    seven_d_delivered_map = {k: 0.0 for k in depots_dict}
 
     cur_entry_date = ""
     for row in delivery_rows:
@@ -328,14 +453,18 @@ def run_frozen_sync(target_date_str=None, export_excel=False):
         depot = loc_to_depot.get(loc)
         if not depot:
             ref_id = row.get('reference_id', '') or row.get('custRefNo', '') or ''
-            depot = match_depot_from_ref(ref_id)
-        if not depot or depot not in DEPOT_CONFIG:
+            depot = match_depot_from_ref(ref_id, depots_dict, default_depot=default_depot)
+        if not depot or depot not in depots_dict:
             continue
 
-        qty = clean_num(row.get('qty', 0.0))
+        # Extract quantity based on category field (Primary 'qty' or Secondary 'sec_qty')
+        qty = clean_num(row.get(qty_field, 0.0))
+        if qty == 0.0 and qty_field != 'qty':
+            qty = clean_num(row.get('qty', 0.0)) # Fallback
+
         mtd_delivered_map[depot] += qty
 
-        # Today check (e.g. '05/10/26' or '05/10/2026')
+        # Today check
         target_day_month = target_dt.strftime("%d/%m")
         if cur_entry_date.startswith(target_day_month):
             today_delivered_map[depot] += qty
@@ -345,21 +474,20 @@ def run_frozen_sync(target_date_str=None, export_excel=False):
             parts = cur_entry_date.split('/')
             if len(parts) == 3:
                 d_day, d_mon, d_yr = int(parts[0]), int(parts[1]), int(parts[2])
-                if d_yr < 100:
-                    d_yr += 2000
+                if d_yr < 100: d_yr += 2000
                 row_dt = datetime(d_yr, d_mon, d_day)
                 if seven_days_ago_dt <= row_dt <= target_dt:
                     seven_d_delivered_map[depot] += qty
         except Exception:
             pass
 
-    # 3. Fetch Stock for each depot (in parallel for maximum speed)
-    print("[*] Querying Godown Stock for each depot in parallel (CUT-Up-Part)...")
+    # 3. Fetch Stock for each depot in parallel
+    print(f"[*] Querying Godown Stock for each depot ({cat_conf['item_group']})...")
     stock_map = {}
-    with concurrent.futures.ThreadPoolExecutor(max_workers=6) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=min(6, len(depots_dict))) as executor:
         future_to_code = {
-            executor.submit(client.fetch_godown_stock, code, target_date_str): code
-            for code in DEPOT_CONFIG
+            executor.submit(client.fetch_depot_stock, code, conf, cat_conf, target_date_str): code
+            for code, conf in depots_dict.items()
         }
         for future in concurrent.futures.as_completed(future_to_code):
             code = future_to_code[future]
@@ -369,35 +497,34 @@ def run_frozen_sync(target_date_str=None, export_excel=False):
                 print(f"    [!] Error querying stock for {code}: {e}")
                 s = 0.0
             stock_map[code] = s
-            print(f" -> Stock ready: {code:<12} = {s:>10,.0f} PKT")
+            print(f" -> Stock ready: {code:<12} = {s:>10,.1f} {unit}")
 
     # 4. Compute Metrics
     summary_data = []
-    print("\n" + "=" * 90)
-    print(f"{'DEPOT':<12} | {'STOCK (PKT)':<12} | {'ORDERS':<8} | {'DELIVERED':<10} | {'PENDING':<8} | {'MTD AVG':<8} | {'COV(M)':<6} | {'7D AVG':<8} | {'COV(7)':<6}")
-    print("-" * 90)
+    print("\n" + "-" * 96)
+    print(f"{'DEPOT':<12} | {'STOCK (' + unit + ')':<14} | {'ORDERS':<8} | {'DELIVERED':<10} | {'PENDING':<8} | {'MTD AVG':<8} | {'COV(M)':<6} | {'7D AVG':<8} | {'COV(7)':<6}")
+    print("-" * 96)
 
-    for code in ['tejgaon02', 'ctg02', 'ashulia02', 'mohakhali02', 'jessore02', 'sylhet02']:
-        stock = round(stock_map.get(code, 0.0))
-        orders = round(orders_map.get(code, 0.0))
-        delivered = round(today_delivered_map.get(code, 0.0))
-        pending = max(0, orders - delivered)
+    for code in depots_dict:
+        stock = round(stock_map.get(code, 0.0), 1 if unit == 'Kg' else 0)
+        orders = round(orders_map.get(code, 0.0), 1 if unit == 'Kg' else 0)
+        delivered = round(today_delivered_map.get(code, 0.0), 1 if unit == 'Kg' else 0)
+        pending = max(0.0, round(orders - delivered, 1 if unit == 'Kg' else 0))
 
-        # MTD Avg & Cover
         mtd_tot = mtd_delivered_map.get(code, 0.0)
         mtd_avg = round(mtd_tot / max(1, mtd_days), 1)
         mtd_cov = round(stock / mtd_avg, 1) if mtd_avg > 0 else 999.0
 
-        # 7-Day Avg & Cover
         seven_tot = seven_d_delivered_map.get(code, 0.0)
         seven_avg = round(seven_tot / 7.0, 1)
         seven_cov = round(stock / seven_avg, 1) if seven_avg > 0 else 999.0
 
-        print(f"{code:<12} | {stock:>12,d} | {orders:>8,d} | {delivered:>10,d} | {pending:>8,d} | {mtd_avg:>8.1f} | {mtd_cov:>6.1f} | {seven_avg:>8.1f} | {seven_cov:>6.1f}")
+        print(f"{code:<12} | {stock:>14,.1f} | {orders:>8,.1f} | {delivered:>10,.1f} | {pending:>8,.1f} | {mtd_avg:>8.1f} | {mtd_cov:>6.1f} | {seven_avg:>8.1f} | {seven_cov:>6.1f}")
 
         summary_data.append({
             'depot': code,
-            'category': 'Frozen',
+            'category': cat_key,
+            'unit': unit,
             'stock': stock,
             'orders': orders,
             'delivered': delivered,
@@ -407,20 +534,62 @@ def run_frozen_sync(target_date_str=None, export_excel=False):
             'avg_daily_7d': seven_avg,
             'stock_cover_7d': seven_cov
         })
-    print("=" * 90)
 
-    # 5. Export Master Template Excel (Optional)
+    print("-" * 96)
+    return summary_data
+
+
+def run_sync_pipeline(target_date_str=None, category_filter='all', export_excel=False):
+    now = datetime.now()
+    if not target_date_str:
+        target_date_str = now.strftime("%d/%m/%Y")
+
+    target_dt = datetime.strptime(target_date_str, "%d/%m/%Y")
+    date_iso = target_dt.strftime("%Y-%m-%d")
+    mtd_start_str = f"01/{target_dt.strftime('%m/%Y')}"
+    mtd_days = target_dt.day
+    seven_days_ago_dt = target_dt - timedelta(days=6)
+
+    configs = load_extended_configs()
+
+    print("\n" + "=" * 70)
+    print(f"[*] PARAGON AGRO - DAILY ERP AUTO SYNC PIPELINE")
+    print(f"[*] Target Date : {target_date_str} (MTD: {mtd_start_str} to {target_date_str})")
+    print(f"[*] Categories  : {category_filter.upper()}")
+    print("=" * 70)
+
+    client = PoloxyClient()
+    client.authenticate()
+
+    cats_to_run = []
+    if category_filter.lower() in ('all', ''):
+        cats_to_run = ['Frozen', 'Chicken', 'Egg']
+    else:
+        for c in configs:
+            if c.lower() == category_filter.lower():
+                cats_to_run.append(c)
+
+    if not cats_to_run:
+        print(f"[!] Warning: Category '{category_filter}' not found in configuration. Defaulting to all.")
+        cats_to_run = ['Frozen', 'Chicken', 'Egg']
+
+    all_results = []
+    for ckey in cats_to_run:
+        if ckey in configs:
+            res = run_category_sync(client, ckey, configs[ckey], target_date_str, target_dt, mtd_start_str, mtd_days, seven_days_ago_dt)
+            all_results.extend(res)
+
+    # Export Master Excel Template (Optional)
     if export_excel and openpyxl:
         wb = openpyxl.Workbook()
         ws = wb.active
         ws.title = "Master_Daily"
-        
-        # Standard Portal Header
-        ws.append(["Depot", "Category", "Orders", "Delivered", "Stock", "Avg_Daily", "Avg_Daily_7D", "Stock_Cover_MTD", "Stock_Cover_7D"])
-        for r in summary_data:
+        ws.append(["Depot", "Category", "Unit", "Orders", "Delivered", "Stock", "Avg_Daily_MTD", "Avg_Daily_7D", "Stock_Cover_MTD", "Stock_Cover_7D"])
+        for r in all_results:
             ws.append([
                 r['depot'],
                 r['category'],
+                r.get('unit', 'Qty'),
                 r['orders'],
                 r['delivered'],
                 r['stock'],
@@ -429,25 +598,32 @@ def run_frozen_sync(target_date_str=None, export_excel=False):
                 r['stock_cover_mtd'],
                 r['stock_cover_7d']
             ])
-
-        out_excel = f"Master_Daily_Frozen_{date_iso}.xlsx"
+        out_excel = f"Master_Daily_Combined_{date_iso}.xlsx"
         wb.save(out_excel)
-        print(f"\n[OK] Ready Master Excel Template generated: {out_excel}")
+        print(f"\n[OK] Ready Master Excel generated: {out_excel}")
 
-    return summary_data
+    return all_results
+
+# Backward compatibility alias
+def run_frozen_sync(target_date_str=None, export_excel=False):
+    return run_sync_pipeline(target_date_str=target_date_str, category_filter='Frozen', export_excel=export_excel)
 
 if __name__ == '__main__':
     target = None
     json_mode = False
     export_excel = False
+    category_filter = 'all'
+
     for arg in sys.argv[1:]:
         if arg == '--json':
             json_mode = True
         elif arg == '--excel':
             export_excel = True
+        elif arg.startswith('--category='):
+            category_filter = arg.split('=', 1)[1].strip()
         elif not target and not arg.startswith('-'):
             target = arg
-    res = run_frozen_sync(target, export_excel=export_excel)
+
+    res = run_sync_pipeline(target, category_filter=category_filter, export_excel=export_excel)
     if json_mode:
         print("\n__JSON_START__" + json.dumps(res) + "__JSON_END__")
-

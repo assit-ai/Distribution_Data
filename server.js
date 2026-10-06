@@ -99,7 +99,23 @@ async function init() {
       driver_mobile text not null default '', vehicle_type text not null default 'Pickup Van',
       status text not null default 'active', created_at timestamptz not null default now(),
       unique(depot, vehicle_no));
+    create table if not exists erp_depot_mappings(
+      id serial primary key, category text not null,
+      depot_code text not null, depot_name text not null default '',
+      godown_name text not null default '', godown_id text not null default '',
+      ref_patterns text[] not null default '{}', is_default boolean not null default false,
+      created_at timestamptz not null default now(), unique(category, depot_code));
   `);
+
+  // Ensure entries table columns support decimals (e.g. Chicken in Kg)
+  try {
+    await pool.query(`
+      alter table entries alter column orders type numeric using orders::numeric;
+      alter table entries alter column delivered type numeric using delivered::numeric;
+    `);
+  } catch (e) {
+    // Already numeric or ignored
+  }
 
   // Unblock any users previously forced into must_change
   await pool.query('update users set must_change = false where must_change = true');
@@ -123,6 +139,39 @@ async function init() {
   }
   console.log('Categories & units initialized');
 
+  // Default ERP Depot Mappings Initialization
+  const defaultMappings = [
+    // Frozen
+    { category: 'Frozen', depot_code: 'tejgaon02', depot_name: '02. Frozen Foods Tejgaon Depot', godown_name: '02. Frozen Foods Tejgaon Depot', godown_id: 'G206', ref_patterns: ['02.TG', '02. TEJGAON', '02.TG-FZ', '02 TG', 'TEJGAON'], is_default: false },
+    { category: 'Frozen', depot_code: 'ctg02', depot_name: '02. Frozen Foods Chittagong Depot', godown_name: '02. Frozen Foods Chittagong Depot', godown_id: 'G7', ref_patterns: ['02.CTG', '02. CTG', '02 CTG', '02.CHITTAGONG', 'CHITTAGONG'], is_default: false },
+    { category: 'Frozen', depot_code: 'ashulia02', depot_name: '02. Frozen Foods Factory Godown', godown_name: '02. Frozen Foods Factory Godown', godown_id: 'G5', ref_patterns: ['02. FROZEN FOOD', '02.FROZEN FOOD', '02 FACTORY', '02.FACTORY', '02.ASH', 'ASHULIA'], is_default: false },
+    { category: 'Frozen', depot_code: 'mohakhali02', depot_name: '02. Frozen Foods HO Godown', godown_name: '02. Frozen Foods HO Godown', godown_id: 'G6', ref_patterns: ['02.HO', '02. HO', '02 HO', '02.MHK', 'MOHAKHALI'], is_default: false },
+    { category: 'Frozen', depot_code: 'jessore02', depot_name: '02. Frozen Foods Jessore Depot', godown_name: '02. Frozen Foods Jessore Depot', godown_id: 'G256', ref_patterns: ['02 JD', '02.JD', '02.JESSORE', '02. JESSORE', 'JESSORE'], is_default: false },
+    { category: 'Frozen', depot_code: 'sylhet02', depot_name: '02. Frozen Foods Sylhet Depot', godown_name: '02. Frozen Foods Sylhet Depot', godown_id: 'G167', ref_patterns: ['02.SYLHET', '02. SYLHET', '02 SYLHET', '02.SYL', 'SYLHET'], is_default: false },
+
+    // Chicken
+    { category: 'Chicken', depot_code: 'tejgaon01', depot_name: '01. Process Tejgaon Depot', godown_name: '01. Process Tejgaon Depot', godown_id: 'G205', ref_patterns: ['01.TG', '01. TEJGAON', '01 TG', '01.TEJGAON', '01TG'], is_default: false },
+    { category: 'Chicken', depot_code: 'ctg01', depot_name: '01. Process Chittagong Depot', godown_name: '01. Process Chittagong Depot', godown_id: 'G4', ref_patterns: ['01.CTG', '01. CTG', '01 CTG', '01.CHITTAGONG', '01CTG'], is_default: false },
+    { category: 'Chicken', depot_code: 'gazipur01', depot_name: '01. Process Factory Godown', godown_name: '01. Process Factory Godown', godown_id: 'G2', ref_patterns: ['01 FACTORY', '01.FACTORY', '01.GAZIPUR', 'GAZIPUR', 'FACTORY'], is_default: true },
+    { category: 'Chicken', depot_code: 'jessore01', depot_name: '01. Process Jessore Depot', godown_name: '01. Process Jessore Depot', godown_id: 'G255', ref_patterns: ['01 JD', '01.JD', '01.JESSORE', '01 JD', '01JD'], is_default: false },
+    { category: 'Chicken', depot_code: 'sylhet01', depot_name: '01. Process Sylhet Depot', godown_name: '01. Process Sylhet Depot', godown_id: 'G166', ref_patterns: ['01.SYLHET', '01. SYLHET', '01 SYLHET', '01SYL', '01.SYL'], is_default: false },
+
+    // Egg
+    { category: 'Egg', depot_code: 'tejgaon03', depot_name: '03. Branded Egg HO / Tejgaon', godown_name: '03. Branded Egg HO Godown', godown_id: 'G9', ref_patterns: ['03HO', '003.HO', '03.HO', '03. HO', '03 HO', '003HO', '03.TG', '03TG'], is_default: true }
+  ];
+
+  for (const m of defaultMappings) {
+    await pool.query(`
+      insert into erp_depot_mappings(category, depot_code, depot_name, godown_name, godown_id, ref_patterns, is_default)
+      values($1, $2, $3, $4, $5, $6, $7)
+      on conflict(category, depot_code) do update set
+        depot_name = excluded.depot_name,
+        godown_name = excluded.godown_name,
+        godown_id = excluded.godown_id
+    `, [m.category, m.depot_code, m.depot_name, m.godown_name, m.godown_id, m.ref_patterns, m.is_default]);
+  }
+  await syncDepotMappingsToFile();
+
   // First admin initialization
   const c = await pool.query('select count(*)::int n from users');
   if (c.rows[0].n === 0) {
@@ -131,6 +180,29 @@ async function init() {
     await pool.query('insert into users(username,password_hash,name,role,must_change) values($1,$2,$3,$4,false)',
       [lc(u), await bcrypt.hash(p, 10), 'Admin', 'admin']);
     console.log('First admin user created:', lc(u));
+  }
+}
+
+async function syncDepotMappingsToFile() {
+  try {
+    const r = await pool.query('select category, depot_code, depot_name, godown_name, godown_id, ref_patterns, is_default from erp_depot_mappings order by category, depot_code');
+    const custom = {};
+    for (const row of r.rows) {
+      if (!custom[row.category]) custom[row.category] = { depots: {} };
+      custom[row.category].depots[row.depot_code] = {
+        name: row.godown_name || row.depot_name,
+        godown_id: row.godown_id,
+        ref_patterns: row.ref_patterns || [],
+        is_default: row.is_default
+      };
+      if (row.is_default) {
+        custom[row.category].default_depot = row.depot_code;
+      }
+    }
+    const filePath = path.join(__dirname, 'depot_mappings.json');
+    fs.writeFileSync(filePath, JSON.stringify(custom, null, 2), 'utf8');
+  } catch (e) {
+    console.warn('[ERP Mappings] Warning syncing mappings to file:', e.message);
   }
 }
 
@@ -164,8 +236,11 @@ async function allowedCategories(u) {
 function normDepot(s) {
   if (!s) return '';
   s = String(s).toLowerCase().trim();
-  if (s.includes('tejgaon') || /(^|[^a-z])(tg|02\.tg)($|[^a-z0-9])/.test(s)) return 'tejgaon';
+  // Preserve specific depot codes ending in two digits (e.g. tejgaon01, ctg02, tejgaon03)
+  if (/^[a-z]+[0-9]{2}$/.test(s)) return s;
+  if (s.includes('tejgaon') || /(^|[^a-z])(tg|02\.tg|01\.tg|03\.tg)($|[^a-z0-9])/.test(s)) return 'tejgaon';
   if (s.includes('chittagong') || s.includes('ctg')) return 'ctg';
+  if (s.includes('gazipur')) return 'gazipur';
   if (s.includes('ashulia') || s.includes('factory') || s.includes('ash')) return 'ashulia';
   if (s.includes('mohakhali') || s.includes('ho godown') || s.includes('mhk') || /(^|[^a-z])ho($|[^a-z0-9])/.test(s)) return 'mohakhali';
   if (s.includes('jessore') || /(^|[^a-z])jd($|[^a-z0-9])/.test(s)) return 'jessore';
@@ -448,13 +523,17 @@ app.get('/api/registered-vans', auth, wrap(async (req, res) => {
 
 // ---------- Poloxy ERP Auto Sync (Web Trigger) ----------
 app.post('/api/auto-sync', auth, admin, wrap(async (req, res) => {
-  const { date } = req.body;
+  const { date, category } = req.body;
   const targetDate = String(date || '').trim() || new Date().toISOString().slice(0, 10);
   if (!DATE.test(targetDate)) return res.status(400).json({ error: 'Invalid date format (expected YYYY-MM-DD)' });
 
   // Convert YYYY-MM-DD to DD/MM/YYYY for Poloxy
   const [y, m, d] = targetDate.split('-');
   const poloxyDate = `${d}/${m}/${y}`;
+  const catParam = String(category || 'all').trim();
+
+  // Ensure latest DB mappings are written to depot_mappings.json for the Python sync
+  await syncDepotMappingsToFile();
 
   const scriptPath = path.join(__dirname, 'sync_frozen_daily.py');
   if (!fs.existsSync(scriptPath)) {
@@ -464,7 +543,8 @@ app.post('/api/auto-sync', auth, admin, wrap(async (req, res) => {
   const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
   let stdoutData = '', stderrData = '';
   
-  const child = spawn(pythonCmd, [scriptPath, poloxyDate, '--json'], {
+  const args = [scriptPath, poloxyDate, `--category=${catParam}`, '--json'];
+  const child = spawn(pythonCmd, args, {
     cwd: __dirname,
     env: { ...process.env, PYTHONUNBUFFERED: '1' }
   });
@@ -477,7 +557,7 @@ app.post('/api/auto-sync', auth, admin, wrap(async (req, res) => {
     if (replied) return;
     replied = true;
     return res.status(500).json({
-      error: `Could not start Python: ${err.message}. If running in cloud container without Python or ERP network access, please run the 1-click desktop sync (Run_Frozen_Daily_Sync.bat).`,
+      error: `Could not start Python: ${err.message}. If running in cloud container without direct ERP access, run the 1-click desktop sync (Run_Frozen_Daily_Sync.bat / Run_Daily_ERP_Sync.bat).`,
       details: err.message
     });
   });
@@ -510,7 +590,11 @@ app.post('/api/auto-sync', auth, admin, wrap(async (req, res) => {
 
       for (const it of items) {
         const depot = findDepot(allowed, it.depot) || it.depot;
-        const cat = allCats.find(c => lc(c) === lc(it.category)) || 'Frozen';
+        const cat = allCats.find(c => lc(c) === lc(it.category)) || it.category || 'Frozen';
+        const ordVal = nonNeg(it.orders) || 0;
+        const delVal = nonNeg(it.delivered) || 0;
+        const stkVal = nonNeg(it.stock) || 0;
+        const avgVal = nonNeg(it.avg_daily_mtd != null ? it.avg_daily_mtd : it.avg_daily) || 0;
 
         await pool.query(`
           insert into entries(entry_date, depot, category, orders, delivered, stock, avg_daily, updated_by, updated_at)
@@ -522,13 +606,14 @@ app.post('/api/auto-sync', auth, admin, wrap(async (req, res) => {
             avg_daily = excluded.avg_daily,
             updated_by = excluded.updated_by,
             updated_at = now()
-        `, [targetDate, depot, cat, Math.round(it.orders || 0), Math.round(it.delivered || 0), it.stock || 0, it.avg_daily_mtd || it.avg_daily || 0, req.user.id]);
+        `, [targetDate, depot, cat, ordVal, delVal, stkVal, avgVal, req.user.id]);
         saved++;
       }
 
       res.json({
         ok: true,
         date: targetDate,
+        category: catParam,
         saved,
         items,
         stdout: stdoutData
@@ -540,6 +625,50 @@ app.post('/api/auto-sync', auth, admin, wrap(async (req, res) => {
       });
     }
   });
+}));
+
+// ---------- ERP depot mappings (Admin configurable) ----------
+app.get('/api/erp-depots', auth, admin, wrap(async (req, res) => {
+  const r = await pool.query('select * from erp_depot_mappings order by category, depot_code');
+  res.json({ mappings: r.rows });
+}));
+
+app.post('/api/erp-depots', auth, admin, wrap(async (req, res) => {
+  const b = req.body;
+  const category = String(b.category || '').trim();
+  const depot_code = String(b.depot_code || '').trim().toLowerCase();
+  const depot_name = String(b.depot_name || '').trim();
+  const godown_name = String(b.godown_name || '').trim();
+  const godown_id = String(b.godown_id || '').trim();
+  const is_default = Boolean(b.is_default);
+  const ref_patterns = Array.isArray(b.ref_patterns)
+    ? b.ref_patterns.map(x => String(x).trim()).filter(Boolean)
+    : String(b.ref_patterns || '').split(',').map(x => x.trim()).filter(Boolean);
+
+  if (!category) return res.status(400).json({ error: 'Category is required' });
+  if (!depot_code) return res.status(400).json({ error: 'Depot code is required (e.g. tejgaon01)' });
+
+  await pool.query(`
+    insert into erp_depot_mappings(category, depot_code, depot_name, godown_name, godown_id, ref_patterns, is_default)
+    values($1, $2, $3, $4, $5, $6, $7)
+    on conflict(category, depot_code) do update set
+      depot_name = excluded.depot_name,
+      godown_name = excluded.godown_name,
+      godown_id = excluded.godown_id,
+      ref_patterns = excluded.ref_patterns,
+      is_default = excluded.is_default
+  `, [category, depot_code, depot_name || depot_code, godown_name, godown_id, ref_patterns, is_default]);
+
+  await syncDepotMappingsToFile();
+  res.json({ ok: true });
+}));
+
+app.delete('/api/erp-depots/:id', auth, admin, wrap(async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!id) return res.status(400).json({ error: 'Invalid ID' });
+  await pool.query('delete from erp_depot_mappings where id=$1', [id]);
+  await syncDepotMappingsToFile();
+  res.json({ ok: true });
 }));
 
 app.post('/api/registered-vans', auth, admin, wrap(async (req, res) => {

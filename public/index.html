@@ -397,6 +397,56 @@ tr:hover td { background: rgba(0,0,0,0.015); }
 }
 .drop-zone:hover, .drop-zone.dragover { border-color: var(--ac); background: rgba(15, 118, 110, 0.05); }
 
+/* Interactive Table Drill-down Links */
+.cell-clickable {
+  cursor: pointer;
+  transition: all 0.15s ease;
+  position: relative;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  text-decoration-color: rgba(2, 61, 127, 0.35);
+}
+.cell-clickable:hover {
+  background: rgba(2, 61, 127, 0.09) !important;
+  color: var(--primary) !important;
+  text-decoration-color: var(--primary);
+  font-weight: 700;
+  border-radius: 4px;
+}
+.cat-name-link {
+  cursor: pointer;
+  color: var(--primary);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.15s ease;
+}
+.cat-name-link:hover {
+  text-decoration: underline;
+  color: var(--ac);
+}
+
+/* Aligned Form Fields (Fixes label-wrap height mismatches) */
+.aligned-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 12px 14px;
+}
+.aligned-form > div {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+.aligned-form label {
+  min-height: 22px;
+  display: flex;
+  align-items: flex-end;
+  margin-bottom: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--mut);
+}
+
 .hid { display: none !important; }
 </style>
 </head>
@@ -571,6 +621,7 @@ tr:hover td { background: rgba(0,0,0,0.015); }
       <div class="card">
         <div class="card-header">
           <div class="card-title">📦 Cluster Distribution Summary (Category-wise)</div>
+          <span class="sub" style="font-size:12px; color:var(--primary); font-weight:600;">🔍 Click any category or number below to view Depot-wise breakdown</span>
         </div>
         <div class="table-wrap">
           <table>
@@ -950,92 +1001,8 @@ Savar	DM-THA-12-3040	Abdul Ali	01811000002	2.0 Ton Van	active" oninput="parsePas
         <div class="card-title">⚡ Bulk Upload & ERP Data Sync</div>
       </div>
 
-      <!-- Quick 1-Click Poloxy Auto Sync Callout -->
-      <div style="background:rgba(2, 61, 127, 0.05); border:1.5px dashed var(--primary); border-radius:8px; padding:12px 16px; margin-bottom:16px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
-        <div>
-          <div style="font-weight:700; color:var(--primary); font-size:14px;">⚡ Tired of manually exporting & uploading Excel?</div>
-          <div class="sub">You can trigger Poloxy ERP Auto Sync directly with 1 click. Orders, Delivered & Stock will be pulled and saved automatically.</div>
-        </div>
-        <button type="button" class="p" onclick="setTab('admin'); $('auto_sync_date').value = $('bulk-date').value || $('date').value; runPoloxyAutoSync();" style="margin:0; background:var(--primary); white-space:nowrap;">⚡ Run Poloxy Auto Sync Now</button>
-      </div>
-      <!-- Sample Template Download Buttons -->
-      <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px;">
-        <button type="button" class="s" style="font-size:12px; padding:6px 12px;" onclick="downloadSampleTemplate('stock')">📥 Download Stock Template (.xlsx)</button>
-        <button type="button" class="s" style="font-size:12px; padding:6px 12px;" onclick="downloadSampleTemplate('orders')">📥 Download Orders & Delivery Template (.xlsx)</button>
-        <button type="button" class="s" style="font-size:12px; padding:6px 12px;" onclick="downloadSampleTemplate('full')">📥 Download Master Template (.xlsx)</button>
-      </div>
-
-      <!-- Drag & Drop Zone -->
-      <div class="drop-zone" id="drop-zone" onclick="$('file-input').click()">
-        <input type="file" id="file-input" class="hid" accept=".xlsx,.xls,.csv" onchange="handleFileSelect(event)">
-        <div style="font-size:24px; margin-bottom:6px;">📁</div>
-        <div style="font-weight:600; font-size:14px;">Drag & Drop your Excel / CSV file here</div>
-        <div class="sub" style="margin-top:4px;">or click to browse files (.xlsx, .xls, .csv)</div>
-      </div>
-
-      <div style="margin: 16px 0; text-align: center; color: var(--mut); font-weight: 600;">— OR PASTE EXCEL ROWS DIRECTLY —</div>
-
-      <!-- Paste Box -->
-      <div>
-        <label>Excel / Poloxy Table Paste Box (Copy from Excel & Ctrl+V here)</label>
-        <textarea id="bulk-paste" style="min-height:110px; font-family:monospace; font-size:12px;" placeholder="Depot	Category	Stock	Avg_Daily
-Dhaka	Frozen	12000	2800
-Gazipur	Chicken	8500	1500
-Savar	Egg	42000	7500" oninput="parsePastedTable()"></textarea>
-      </div>
-
-      <!-- Auto Column Matcher Options -->
-      <div class="g" style="margin-top:12px;">
-        <div>
-          <label>Upload Type</label>
-          <select id="bulk-mode">
-            <option value="all">📦 Full (Stock + Orders + Avg Daily)</option>
-            <option value="stock">📊 Stock & Avg Daily Only (Poloxy ERP)</option>
-            <option value="orders">🛒 Orders & Delivery Only</option>
-          </select>
-        </div>
-        <div style="display:flex; align-items:flex-end;">
-          <button class="p" onclick="processAndCommitBulk()" id="btn-commit-bulk" disabled>
-            Save All Parsed Rows to Database
-          </button>
-        </div>
-      </div>
-
-      <!-- Parsed Preview -->
-      <div id="bulk-preview-wrap" class="hid" style="margin-top:16px;">
-        <div class="card-header">
-          <div class="card-title" style="font-size:14px;">Preview (<span id="parsed-count">0</span> valid rows ready to upload)</div>
-        </div>
-        <div class="table-wrap" style="max-height:260px; overflow-y:auto;">
-          <table>
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Depot</th>
-                <th>Category</th>
-                <th class="num">Orders</th>
-                <th class="num">Delivered</th>
-                <th class="num">Stock</th>
-                <th class="num">Avg Daily</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody id="bulk-preview-tb"></tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-
-    <!-- ========================================== -->
-    <!-- TAB 5: ADMIN & USER MANAGEMENT -->
-    <!-- ========================================== -->
-    <div id="tab-admin" class="card adm hid">
-      <div class="card-header">
-        <div class="card-title">👥 User Management, Product Categories & ERP Auto Sync</div>
-      </div>
-
-      <!-- POLOXY ERP AUTO SYNC SECTION -->
-      <div class="card" style="margin-bottom:20px; background:linear-gradient(135deg, rgba(2, 61, 127, 0.05) 0%, rgba(20, 184, 166, 0.08) 100%); border:1.5px solid var(--primary);">
+      <!-- 1. POLOXY ERP AUTO SYNC SECTION (DIRECT 1-CLICK PULL) -->
+      <div class="card" style="margin-bottom:24px; background:linear-gradient(135deg, rgba(2, 61, 127, 0.05) 0%, rgba(20, 184, 166, 0.08) 100%); border:1.5px solid var(--primary);">
         <div class="card-header">
           <div class="card-title" style="font-size:15px; color:var(--primary); display:flex; align-items:center; gap:8px;">
             <span>⚡ Poloxy ERP Auto Sync (Direct 1-Click Pull)</span>
@@ -1044,7 +1011,7 @@ Savar	Egg	42000	7500" oninput="parsePastedTable()"></textarea>
           <span class="sub" style="font-size:12px;">Direct ERP Login & Database Auto-Save</span>
         </div>
         <p class="sub" style="margin-bottom:12px;">
-          Automatically logs in to <b>Poloxy ERP (erp.paragon.com.bd)</b>, extracts <b>Orders, Delivered (Today & MTD), Closing Stock</b> across all 6 depots (Tejgaon, Chittagong, Ashulia, Mohakhali, Jessore, Sylhet), calculates daily sales averages and stock covers, and saves directly into the database.
+          Automatically logs in to <b>Poloxy ERP (erp.paragon.com.bd)</b>, extracts <b>Orders, Delivered (Today & MTD), Closing Stock</b> across depots for <b>Frozen Foods, Process Chicken, and Branded Eggs</b>, calculates daily sales averages and stock covers, and saves directly into the database.
         </p>
         <div class="g" style="grid-template-columns: 1fr 1fr auto; gap:12px; align-items:flex-end;">
           <div>
@@ -1054,10 +1021,10 @@ Savar	Egg	42000	7500" oninput="parsePastedTable()"></textarea>
           <div>
             <label>Product Category</label>
             <select id="auto_sync_cat">
-              <option value="Frozen">Frozen Foods (CUT-Up-Part)</option>
-              <option value="Egg" disabled>Egg (Coming Soon)</option>
-              <option value="Tea" disabled>Tea (Coming Soon)</option>
-              <option value="Chicken" disabled>Chicken (Coming Soon)</option>
+              <option value="all">⚡ All Categories (Frozen + Chicken + Egg)</option>
+              <option value="Frozen">❄️ Frozen Foods (02. Frozen Foods - CUT-Up-Part)</option>
+              <option value="Chicken">🍗 Process Chicken (01. Process Chicken - CUT-Up-Part)</option>
+              <option value="Egg">🥚 Branded Egg (03. Branded Eggs - PACKED EGGS)</option>
             </select>
           </div>
           <div>
@@ -1068,6 +1035,96 @@ Savar	Egg	42000	7500" oninput="parsePastedTable()"></textarea>
         </div>
         <div id="auto_sync_status" style="margin-top:12px; font-size:13px;"></div>
         <pre id="auto_sync_logs" class="hid" style="margin-top:12px; max-height:220px; overflow-y:auto; background:#0f172a; color:#38bdf8; padding:12px; border-radius:6px; font-size:12px; font-family:monospace; line-height:1.4; white-space:pre-wrap; border:1px solid #334155;"></pre>
+      </div>
+
+      <!-- 2. MANUAL EXCEL / CSV UPLOAD SECTION -->
+      <div style="border-top:1px dashed var(--bd); padding-top:18px; margin-top:10px;">
+        <div style="font-weight:700; font-size:15px; margin-bottom:6px; color:var(--fg); display:flex; align-items:center; gap:8px;">
+          <span>📁 Manual Excel / CSV File Upload & Paste</span>
+          <span class="sub" style="font-weight:normal; font-size:12px;">(For Dairy, Momo, or Offline Exports)</span>
+        </div>
+        <p class="sub" style="margin-bottom:14px;">
+          Upload or paste Excel reports if Poloxy automated sync is not configured for that category yet.
+        </p>
+
+        <!-- Sample Template Download Buttons -->
+        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:14px;">
+          <button type="button" class="s" style="font-size:12px; padding:6px 12px;" onclick="downloadSampleTemplate('stock')">📥 Download Stock Template (.xlsx)</button>
+          <button type="button" class="s" style="font-size:12px; padding:6px 12px;" onclick="downloadSampleTemplate('orders')">📥 Download Orders & Delivery Template (.xlsx)</button>
+          <button type="button" class="s" style="font-size:12px; padding:6px 12px;" onclick="downloadSampleTemplate('full')">📥 Download Master Template (.xlsx)</button>
+        </div>
+
+        <!-- Drag & Drop Zone -->
+        <div class="drop-zone" id="drop-zone" onclick="$('file-input').click()">
+          <input type="file" id="file-input" class="hid" accept=".xlsx,.xls,.csv" onchange="handleFileSelect(event)">
+          <div style="font-size:24px; margin-bottom:6px;">📁</div>
+          <div style="font-weight:600; font-size:14px;">Drag & Drop your Excel / CSV file here</div>
+          <div class="sub" style="margin-top:4px;">or click to browse files (.xlsx, .xls, .csv)</div>
+        </div>
+
+        <div style="margin: 16px 0; text-align: center; color: var(--mut); font-weight: 600;">— OR PASTE EXCEL ROWS DIRECTLY —</div>
+
+        <!-- Paste Box -->
+        <div>
+          <label>Excel / Poloxy Table Paste Box (Copy from Excel & Ctrl+V here)</label>
+          <textarea id="bulk-paste" style="min-height:110px; font-family:monospace; font-size:12px;" placeholder="Depot	Category	Stock	Avg_Daily
+Dhaka	Frozen	12000	2800
+Gazipur	Chicken	8500	1500
+Savar	Egg	42000	7500" oninput="parsePastedTable()"></textarea>
+        </div>
+
+        <!-- Auto Column Matcher Options -->
+        <div class="g" style="margin-top:12px;">
+          <div>
+            <label>Upload Type</label>
+            <select id="bulk-mode">
+              <option value="all">📦 Full (Stock + Orders + Avg Daily)</option>
+              <option value="stock">📊 Stock & Avg Daily Only (Poloxy ERP)</option>
+              <option value="orders">🛒 Orders & Delivery Only</option>
+            </select>
+          </div>
+          <div style="display:flex; align-items:flex-end;">
+            <button class="p" onclick="processAndCommitBulk()" id="btn-commit-bulk" disabled>
+              Save All Parsed Rows to Database
+            </button>
+          </div>
+        </div>
+
+        <!-- Parsed Preview -->
+        <div id="bulk-preview-wrap" class="hid" style="margin-top:16px;">
+          <div class="card-header">
+            <div class="card-title" style="font-size:14px;">Preview (<span id="parsed-count">0</span> valid rows ready to upload)</div>
+          </div>
+          <div class="table-wrap" style="max-height:260px; overflow-y:auto;">
+            <table>
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Depot</th>
+                  <th>Category</th>
+                  <th class="num">Orders</th>
+                  <th class="num">Delivered</th>
+                  <th class="num">Stock</th>
+                  <th class="num">Avg Daily</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="bulk-preview-tb"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========================================== -->
+    <!-- TAB 6: ADMIN & USER MANAGEMENT -->
+    <!-- ========================================== -->
+    <div id="tab-admin" class="card adm hid">
+      <div class="card-header">
+        <div class="card-title">👥 User Management & Product Categories</div>
+        <div class="btn-row" style="margin:0;">
+          <button class="s sm" onclick="setTab('bulk')" style="font-size:12px;">⚡ Go to Poloxy ERP Auto Sync</button>
+        </div>
       </div>
 
       <!-- DYNAMIC PRODUCT CATEGORIES MANAGEMENT -->
@@ -1103,6 +1160,46 @@ Savar	Egg	42000	7500" oninput="parsePastedTable()"></textarea>
         </div>
       </div>
 
+      <!-- ERP DEPOT & REF. NO. MAPPING CONFIGURATION -->
+      <div class="card" style="margin-bottom:20px; background:var(--bg); border:1px solid var(--bd);">
+        <div class="card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+          <div>
+            <div class="card-title" style="font-size:14px;">🏢 ERP Depot & Ref. No. Mappings (Poloxy Sync Rules)</div>
+            <p class="sub" style="margin:2px 0 0 0; font-size:12px;">
+              Configure Poloxy Godown IDs and Ref. No. patterns to auto-detect depots when new depots open in future.
+            </p>
+          </div>
+          <div style="display:flex; align-items:center; gap:8px;">
+            <div style="display:flex; gap:4px;" id="erp_depot_cat_filter">
+              <button class="s sm active" onclick="filterErpDepots('all', this)" style="font-size:11px; padding:4px 8px;">All</button>
+              <button class="s sm" onclick="filterErpDepots('Frozen', this)" style="font-size:11px; padding:4px 8px;">Frozen</button>
+              <button class="s sm" onclick="filterErpDepots('Chicken', this)" style="font-size:11px; padding:4px 8px;">Chicken</button>
+              <button class="s sm" onclick="filterErpDepots('Egg', this)" style="font-size:11px; padding:4px 8px;">Egg</button>
+            </div>
+            <button class="p sm" onclick="openAddErpDepotModal()" style="font-size:12px; padding:5px 10px;">+ Add Depot Rule</button>
+          </div>
+        </div>
+        
+        <div class="table-wrap" style="margin-top:10px;">
+          <table>
+            <thead>
+              <tr>
+                <th style="width:90px;">Category</th>
+                <th style="width:110px;">Depot Code</th>
+                <th>Depot Name</th>
+                <th>Poloxy Godown Name (ID)</th>
+                <th>Ref. No. Patterns</th>
+                <th style="width:70px;" class="center">Default?</th>
+                <th style="width:80px;" class="center">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="erp_depot_tb">
+              <tr><td colspan="7" class="center sub" style="padding:14px;">Loading ERP depot mappings...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       <!-- Password Reset Requests -->
       <div style="margin-bottom:16px;">
         <h3 style="font-size:14px; font-weight:700; margin-bottom:6px;">Password Reset Requests <span id="rqn" class="bad"></span></h3>
@@ -1130,19 +1227,48 @@ Savar	Egg	42000	7500" oninput="parsePastedTable()"></textarea>
       </div>
 
       <!-- Create New User Form -->
-      <h3 style="font-size:14px; font-weight:700; margin-bottom:10px;">Add New User</h3>
-      <div class="g">
-        <div><label>User ID (Username)</label><input id="nu" autocapitalize="none" placeholder="e.g. gazipur_incharge"></div>
-        <div><label>Full Name</label><input id="nn" placeholder="e.g. Rafiqul Islam"></div>
-        <div><label>Designation</label><input id="ng" placeholder="e.g. Depot Incharge"></div>
-        <div><label>Mobile Number</label><input id="nm" type="tel" placeholder="017xxxxxxxx"></div>
-        <div><label>Role</label><select id="nr"><option value="depot">Depot User</option><option value="admin">Cluster Head / Admin</option></select></div>
-        <div><label>Depot(s) (comma separated)</label><input id="nd" placeholder="Gazipur, Savar"></div>
-        <div><label>Assigned Category (e.g. Frozen, Egg)</label><input id="nc" placeholder="Frozen or Egg (blank for all)"></div>
-        <div><label>Initial Password (min 8)</label><input id="np" placeholder="ChangeMe@123"></div>
-      </div>
-      <div class="btn-row">
-        <button class="p" onclick="addUser()">Create User</button>
+      <div style="background:var(--bg); border:1px solid var(--bd); border-radius:8px; padding:16px; margin-top:16px;">
+        <h3 style="font-size:14px; font-weight:700; margin-bottom:12px; color:var(--tx); display:flex; align-items:center; gap:6px;">
+          <span>➕ Add New User</span>
+          <span class="sub" style="font-size:12px; font-weight:normal;">(Create user account & assign depots/categories)</span>
+        </h3>
+        <div class="aligned-form">
+          <div>
+            <label>User ID (Username)</label>
+            <input id="nu" autocapitalize="none" placeholder="e.g. gazipur_incharge">
+          </div>
+          <div>
+            <label>Full Name</label>
+            <input id="nn" placeholder="e.g. Rafiqul Islam">
+          </div>
+          <div>
+            <label>Designation</label>
+            <input id="ng" placeholder="e.g. Depot Incharge">
+          </div>
+          <div>
+            <label>Mobile Number</label>
+            <input id="nm" type="tel" placeholder="017xxxxxxxx">
+          </div>
+          <div>
+            <label>Role</label>
+            <select id="nr"><option value="depot">Depot User</option><option value="admin">Cluster Head / Admin</option></select>
+          </div>
+          <div>
+            <label>Assigned Depots</label>
+            <input id="nd" placeholder="e.g. Gazipur, Savar">
+          </div>
+          <div>
+            <label>Assigned Categories</label>
+            <input id="nc" placeholder="Frozen, Egg (blank for all)">
+          </div>
+          <div>
+            <label>Initial Password</label>
+            <input id="np" placeholder="Min 8, e.g. ChangeMe@123">
+          </div>
+        </div>
+        <div class="btn-row" style="margin-top:14px;">
+          <button class="p" onclick="addUser()">Create User</button>
+        </div>
       </div>
     </div>
   </div>
@@ -1404,6 +1530,154 @@ Savar	Egg	42000	7500" oninput="parsePastedTable()"></textarea>
   </div>
 </div>
 
+<!-- ============================================================ -->
+<!-- MODAL: CATEGORY DISTRIBUTION DRILL-DOWN (Hyperlink Target) -->
+<!-- ============================================================ -->
+<div id="modal-category-drilldown" class="modal-overlay hid" onclick="if(event.target===this)closeCategoryModal()">
+  <div class="modal-box" style="max-width:960px;">
+    <div class="modal-header">
+      <div class="modal-title">
+        <span>📦 Category Drill-Down:</span>
+        <select id="modal_cat_select" onchange="renderCategoryModal(this.value, currentCatSortCol)" style="width:auto; font-weight:700; font-size:14px; padding:4px 10px; margin-left:6px;"></select>
+      </div>
+      <button class="modal-close" onclick="closeCategoryModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <!-- High level category KPI cards -->
+      <div class="kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); margin-bottom:14px;">
+        <div class="kpi-card" style="background:var(--bg);">
+          <div class="kpi-label">Orders</div>
+          <div class="kpi-val" id="modal_cat_orders">0</div>
+          <div class="kpi-sub" id="modal_cat_unit">Unit: Pkt</div>
+        </div>
+        <div class="kpi-card" style="background:var(--bg);">
+          <div class="kpi-label">Delivered</div>
+          <div class="kpi-val" id="modal_cat_delivered" style="color:var(--ok)">0</div>
+          <div class="kpi-sub" id="modal_cat_ful">Ful: 0%</div>
+        </div>
+        <div class="kpi-card" style="background:var(--bg);">
+          <div class="kpi-label">Pending Deliveries</div>
+          <div class="kpi-val" id="modal_cat_pending" style="color:var(--warn)">0</div>
+          <div class="kpi-sub" id="modal_cat_pending_depots">0 Depots pending</div>
+        </div>
+        <div class="kpi-card" style="background:var(--bg);">
+          <div class="kpi-label">Closing Stock</div>
+          <div class="kpi-val" id="modal_cat_stock" style="color:var(--primary)">0</div>
+          <div class="kpi-sub" id="modal_cat_stock_depots">Total in depots</div>
+        </div>
+        <div class="kpi-card" style="background:var(--bg);">
+          <div class="kpi-label">Avg Daily Sales</div>
+          <div class="kpi-val" id="modal_cat_avg">0</div>
+          <div class="kpi-sub">Cluster daily run-rate</div>
+        </div>
+        <div class="kpi-card" style="background:var(--bg);">
+          <div class="kpi-label">Stock Cover</div>
+          <div class="kpi-val" id="modal_cat_cover" style="font-size:18px;">—</div>
+          <div class="kpi-sub" id="modal_cat_cover_status">Cluster Runway</div>
+        </div>
+      </div>
+
+      <!-- Quick Sort / Filter Bar -->
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; margin-bottom:12px;">
+        <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
+          <span style="font-size:12px; font-weight:600; color:var(--mut);">Sort by:</span>
+          <button type="button" class="s sm cat-sort-btn" id="btn_sort_all" onclick="renderCategoryModal(currentSelectedCat, 'all')">Default</button>
+          <button type="button" class="s sm cat-sort-btn" id="btn_sort_pending" onclick="renderCategoryModal(currentSelectedCat, 'pending')">Pending ⏳</button>
+          <button type="button" class="s sm cat-sort-btn" id="btn_sort_stock" onclick="renderCategoryModal(currentSelectedCat, 'stock')">Stock 📦</button>
+          <button type="button" class="s sm cat-sort-btn" id="btn_sort_cover" onclick="renderCategoryModal(currentSelectedCat, 'cover')">Low Stock Cover ⚠️</button>
+          <button type="button" class="s sm cat-sort-btn" id="btn_sort_orders" onclick="renderCategoryModal(currentSelectedCat, 'orders')">Orders 🛒</button>
+          <button type="button" class="s sm cat-sort-btn" id="btn_sort_delivered" onclick="renderCategoryModal(currentSelectedCat, 'delivered')">Delivered 🚚</button>
+        </div>
+        <div>
+          <input type="text" id="modal_cat_search" placeholder="Search depot..." oninput="filterCatDepotRows()" style="padding:4px 8px; font-size:12px; width:160px;">
+        </div>
+      </div>
+
+      <!-- Depot Breakdown Table -->
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Depot Name</th>
+              <th class="num">Orders</th>
+              <th class="num">Delivered</th>
+              <th class="num" style="color:var(--warn)">Pending</th>
+              <th class="center">Fulfillment</th>
+              <th class="num">Closing Stock</th>
+              <th class="num">Avg Daily</th>
+              <th class="center">Stock Cover</th>
+              <th>Status</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="modal_cat_tb"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- MODAL: ADD / EDIT ERP DEPOT MAPPING -->
+<!-- ============================================================ -->
+<div id="modal-erp-depot" class="modal-overlay hid" onclick="if(event.target===this)closeAddErpDepotModal()">
+  <div class="modal-box" style="max-width:540px;">
+    <div class="modal-header">
+      <div class="modal-title" id="modal_erp_depot_title">🏢 Add ERP Depot Mapping Rule</div>
+      <button class="modal-close" onclick="closeAddErpDepotModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <p class="sub" style="font-size:12px; margin-bottom:14px;">
+        Define how Poloxy ERP reports (Godown stock & Sales/Delivery Ref No.) map to this portal's depot code.
+      </p>
+      <form id="form-erp-depot" onsubmit="saveErpDepot(event)">
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:10px;">
+          <div>
+            <label>Product Category <span style="color:var(--bad)">*</span></label>
+            <select id="ed_cat" required>
+              <option value="Frozen">Frozen</option>
+              <option value="Chicken">Chicken</option>
+              <option value="Egg">Egg</option>
+            </select>
+          </div>
+          <div>
+            <label>Portal Depot Code <span style="color:var(--bad)">*</span></label>
+            <input id="ed_code" placeholder="e.g. tejgaon01, ctg01" required>
+            <span class="sub" style="font-size:10px;">Unique key used in database & entries</span>
+          </div>
+        </div>
+        <div style="margin-bottom:10px;">
+          <label>Display Depot Name <span style="color:var(--bad)">*</span></label>
+          <input id="ed_name" placeholder="e.g. Tejgaon Depot" required>
+        </div>
+        <div style="display:grid; grid-template-columns:2fr 1fr; gap:10px; margin-bottom:10px;">
+          <div>
+            <label>Poloxy ERP Godown Name</label>
+            <input id="ed_godown" placeholder="e.g. 01. Process Tejgaon Depot">
+          </div>
+          <div>
+            <label>Godown ID</label>
+            <input id="ed_godown_id" placeholder="e.g. G205 (optional)">
+          </div>
+        </div>
+        <div style="margin-bottom:10px;">
+          <label>Ref. No. Match Patterns (comma separated)</label>
+          <input id="ed_patterns" placeholder="e.g. 01.tg, 01 tg">
+          <span class="sub" style="font-size:11px;">Matches Ref. No. column in Sales Order & Delivery note reports</span>
+        </div>
+        <div style="margin-bottom:14px; display:flex; align-items:center; gap:8px;">
+          <input type="checkbox" id="ed_is_default" style="width:auto; cursor:pointer;">
+          <label for="ed_is_default" style="margin:0; cursor:pointer; font-size:12px;">Set as default fallback when Ref. No. is blank (e.g. Factory Godown)</label>
+        </div>
+        <div class="btn-row" style="margin-top:16px;">
+          <button type="submit" class="p">Save Depot Rule</button>
+          <button type="button" class="s" onclick="closeAddErpDepotModal()">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
 <script>
 let CATS = ['Frozen', 'Chicken', 'Egg', 'Dairy', 'Others'];
 let me = null, deps = [], ents = [], vehicles = [], users = [], dispatches = [], registeredVans = [];
@@ -1629,7 +1903,10 @@ async function boot() {
 
   await loadCategories();
   await loadAll();
-  if (isAdmin) loadUsers();
+  if (isAdmin) {
+    loadUsers();
+    loadErpDepots();
+  }
   setTab(isAdmin ? 'dash' : 'entry');
   setInterval(() => { if (!document.hidden && me && !me.must_change) loadAll(true); }, 30000);
 }
@@ -1790,19 +2067,37 @@ function renderAll() {
   $('kpi-depots').textContent = `${subCount} / ${allKnownDepots.length}`;
   $('kpi-depots-status').textContent = subCount === allKnownDepots.length && allKnownDepots.length > 0 ? 'All depots submitted ✓' : `${allKnownDepots.length - subCount} pending`;
 
-  // 2. Summary Category Table
+  // 2. Summary Category Table (Interactive Hyperlinks & Drill-downs)
   $('tt').innerHTML = CATS.map(c => {
     const x = catTotals[c] || { o: 0, v: 0, s: 0, a: 0, n: 0 };
+    const p = Math.max(0, x.o - x.v);
     const cov = x.a > 0 ? (x.s / x.a).toFixed(1) : '–';
     const covClass = x.a > 0 && (x.s / x.a) < 3 ? 'cover-bad' : 'cover-ok';
+    const u = getCatUnit(c);
     return `<tr>
-      <td><b>${esc(c)}</b> <span class="sub" style="font-size:11px;">(${getCatUnit(c)})</span></td>
-      <td class="num">${fmt(x.o)}</td>
-      <td class="num">${fmt(x.v)}</td>
-      <td class="num" style="color:var(--warn)">${fmt(x.o - x.v)}</td>
-      <td class="num">${fmt(x.s)}</td>
-      <td class="num">${fmt(x.a)}</td>
-      <td class="center"><span class="cover-pill ${covClass}">${cov} days</span></td>
+      <td>
+        <span class="cat-name-link" onclick="openCategoryModal('${esc(c)}', 'all')" title="Click to view depot-wise breakdown for ${esc(c)}">
+          <b>${esc(c)}</b> <span class="sub" style="font-size:11px;">(${u})</span> 🔍
+        </span>
+      </td>
+      <td class="num cell-clickable" onclick="openCategoryModal('${esc(c)}', 'orders')" title="Click to view ${esc(c)} Orders by depot">
+        ${fmt(x.o)}
+      </td>
+      <td class="num cell-clickable" onclick="openCategoryModal('${esc(c)}', 'delivered')" title="Click to view ${esc(c)} Delivered by depot">
+        ${fmt(x.v)}
+      </td>
+      <td class="num cell-clickable" onclick="openCategoryModal('${esc(c)}', 'pending')" title="Click to view ${esc(c)} Pending deliveries by depot" style="color:var(--warn); font-weight:700;">
+        ${fmt(p)}
+      </td>
+      <td class="num cell-clickable" onclick="openCategoryModal('${esc(c)}', 'stock')" title="Click to view ${esc(c)} Closing Stock by depot">
+        ${fmt(x.s)}
+      </td>
+      <td class="num cell-clickable" onclick="openCategoryModal('${esc(c)}', 'avg')" title="Click to view ${esc(c)} Avg Daily Sales by depot">
+        ${fmt(x.a)}
+      </td>
+      <td class="center cell-clickable" onclick="openCategoryModal('${esc(c)}', 'cover')" title="Click to view ${esc(c)} Stock Cover days by depot">
+        <span class="cover-pill ${covClass}" style="cursor:pointer;">${cov} days 🔍</span>
+      </td>
     </tr>`;
   }).join('');
 
@@ -2484,6 +2779,168 @@ function renderPendingModal() {
       <td class="num">${fmt(row.stock)}</td>
     </tr>`;
   }).join('');
+}
+
+// ========================================================
+// CATEGORY DISTRIBUTION DRILL-DOWN MODAL
+// ========================================================
+let currentSelectedCat = 'Frozen';
+let currentCatSortCol = 'all';
+
+function openCategoryModal(catName, sortCol = 'all') {
+  currentSelectedCat = catName || (CATS && CATS[0]) || 'Frozen';
+  currentCatSortCol = sortCol || 'all';
+
+  // Populate category select dropdown
+  const sel = $('modal_cat_select');
+  if (sel) {
+    sel.innerHTML = CATS.map(c => `<option value="${esc(c)}" ${lc(c) === lc(currentSelectedCat) ? 'selected' : ''}>${esc(c)} (${getCatUnit(c)})</option>`).join('');
+  }
+
+  $('modal-category-drilldown').classList.remove('hid');
+  renderCategoryModal(currentSelectedCat, currentCatSortCol);
+}
+
+function closeCategoryModal() {
+  $('modal-category-drilldown').classList.add('hid');
+}
+
+function renderCategoryModal(catName, sortCol = 'all') {
+  currentSelectedCat = catName;
+  currentCatSortCol = sortCol;
+
+  const sel = $('modal_cat_select');
+  if (sel && sel.value !== catName) sel.value = catName;
+
+  // Highlight active sort button
+  ['all', 'pending', 'stock', 'cover', 'orders', 'delivered'].forEach(k => {
+    const btn = $('btn_sort_' + k);
+    if (btn) {
+      if (k === sortCol) {
+        btn.classList.remove('s');
+        btn.classList.add('p');
+      } else {
+        btn.classList.remove('p');
+        btn.classList.add('s');
+      }
+    }
+  });
+
+  // Filter entries for this category
+  let catEntries = ents.filter(r => lc(r.category) === lc(catName));
+  const u = getCatUnit(catName);
+
+  // Compute category totals
+  let totO = 0, totV = 0, totS = 0, totA = 0;
+  let pendingDepotsCount = 0;
+
+  catEntries.forEach(r => {
+    const o = r.orders || 0;
+    const v = r.delivered || 0;
+    const pend = Math.max(0, o - v);
+    totO += o;
+    totV += v;
+    totS += num(r.stock);
+    totA += num(r.avg_daily);
+    if (pend > 0) pendingDepotsCount++;
+  });
+
+  const totP = Math.max(0, totO - totV);
+  const fulPct = pct(totV, totO);
+  const covDays = totA > 0 ? (totS / totA).toFixed(1) : '–';
+
+  $('modal_cat_orders').textContent = fmt(totO);
+  $('modal_cat_unit').textContent = `Unit: ${u}`;
+  $('modal_cat_delivered').textContent = fmt(totV);
+  $('modal_cat_ful').textContent = `Ful: ${fulPct}%`;
+  $('modal_cat_pending').textContent = fmt(totP);
+  $('modal_cat_pending_depots').textContent = `${pendingDepotsCount} depot(s) pending`;
+  $('modal_cat_stock').textContent = fmt(totS);
+  $('modal_cat_stock_depots').textContent = `Across ${catEntries.length} depots`;
+  $('modal_cat_avg').textContent = fmt(totA);
+
+  const covEl = $('modal_cat_cover');
+  const covStatus = $('modal_cat_cover_status');
+  if (totA > 0) {
+    covEl.textContent = `${covDays} days`;
+    if (totS / totA < 3) {
+      covEl.style.color = 'var(--bad)';
+      covStatus.textContent = '⚠️ Critical (<3 days)';
+    } else {
+      covEl.style.color = 'var(--ok)';
+      covStatus.textContent = '✓ Healthy Runway';
+    }
+  } else {
+    covEl.textContent = '—';
+    covEl.style.color = 'var(--mut)';
+    covStatus.textContent = 'No sales avg';
+  }
+
+  // Sorting
+  let sorted = [...catEntries];
+  if (sortCol === 'pending') {
+    sorted.sort((a, b) => ((b.orders || 0) - (b.delivered || 0)) - ((a.orders || 0) - (a.delivered || 0)));
+  } else if (sortCol === 'stock') {
+    sorted.sort((a, b) => num(b.stock) - num(a.stock));
+  } else if (sortCol === 'orders') {
+    sorted.sort((a, b) => (b.orders || 0) - (a.orders || 0));
+  } else if (sortCol === 'delivered') {
+    sorted.sort((a, b) => (b.delivered || 0) - (a.delivered || 0));
+  } else if (sortCol === 'cover') {
+    sorted.sort((a, b) => {
+      const covA = a.avg_daily > 0 ? (a.stock / a.avg_daily) : 9999;
+      const covB = b.avg_daily > 0 ? (b.stock / b.avg_daily) : 9999;
+      return covA - covB;
+    });
+  }
+
+  const tb = $('modal_cat_tb');
+  if (!tb) return;
+
+  if (!sorted.length) {
+    tb.innerHTML = `<tr><td colspan="10" class="center sub" style="padding:24px;">No entry records found for category <b>${esc(catName)}</b> on this date.</td></tr>`;
+    return;
+  }
+
+  tb.innerHTML = sorted.map(r => {
+    const o = r.orders || 0;
+    const v = r.delivered || 0;
+    const p = Math.max(0, o - v);
+    const fPct = pct(v, o);
+    const fPill = fPct >= 90 ? 'cover-ok' : (fPct >= 60 ? 'cover-pill' : 'cover-bad');
+    const cov = r.avg_daily > 0 ? (r.stock / r.avg_daily).toFixed(1) : '–';
+    const covClass = r.avg_daily > 0 && (r.stock / r.avg_daily) < 3 ? 'cover-bad' : 'cover-ok';
+
+    const tdOrdersStyle = sortCol === 'orders' ? 'style="background:rgba(2, 61, 127, 0.08); font-weight:700;"' : '';
+    const tdDeliveredStyle = sortCol === 'delivered' ? 'style="background:rgba(16, 185, 129, 0.08); font-weight:700;"' : '';
+    const tdPendingStyle = sortCol === 'pending' ? 'style="background:rgba(245, 158, 11, 0.18); font-weight:700; color:var(--warn);"' : 'style="color:var(--warn); font-weight:700;"';
+    const tdStockStyle = sortCol === 'stock' ? 'style="background:rgba(2, 61, 127, 0.08); font-weight:700;"' : '';
+    const tdCoverStyle = sortCol === 'cover' ? 'style="background:rgba(239, 68, 68, 0.1);"' : '';
+
+    return `<tr>
+      <td><b>${esc(r.depot)}</b></td>
+      <td class="num" ${tdOrdersStyle}>${fmt(o)}</td>
+      <td class="num" ${tdDeliveredStyle}>${fmt(v)}</td>
+      <td class="num" ${tdPendingStyle}>${fmt(p)}</td>
+      <td class="center"><span class="cover-pill ${fPill}">${fPct}%</span></td>
+      <td class="num" ${tdStockStyle}>${fmt(r.stock)}</td>
+      <td class="num">${fmt(r.avg_daily)}</td>
+      <td class="center" ${tdCoverStyle}><span class="cover-pill ${covClass}">${cov} days</span></td>
+      <td>${p === 0 ? '<span class="badge badge-admin">Fulfilled ✓</span>' : '<span class="badge cover-bad">Pending ⏳</span>'}</td>
+      <td>
+        <button class="sm" onclick="closeCategoryModal(); $('dep').value='${esc(r.depot)}'; $('cat').value='${esc(catName)}'; syncDepotEntryForm(); setTab('entry');">View / Edit</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function filterCatDepotRows() {
+  const query = lc($('modal_cat_search') ? $('modal_cat_search').value : '');
+  const rows = document.querySelectorAll('#modal_cat_tb tr');
+  rows.forEach(tr => {
+    const text = lc(tr.textContent);
+    tr.style.display = text.includes(query) ? '' : 'none';
+  });
 }
 
 // ========================================================
@@ -3269,6 +3726,7 @@ async function doForgot() {
 async function runPoloxyAutoSync() {
   const syncDate = ($('auto_sync_date') && $('auto_sync_date').value) ? $('auto_sync_date').value : $('date').value;
   if (!syncDate) return msg('Please select a target date for sync');
+  const cat = ($('auto_sync_cat') && $('auto_sync_cat').value) ? $('auto_sync_cat').value : 'all';
 
   const btn = $('btn_run_auto_sync');
   const logBox = $('auto_sync_logs');
@@ -3277,15 +3735,15 @@ async function runPoloxyAutoSync() {
   if (btn) btn.disabled = true;
   if (logBox) {
     logBox.classList.remove('hid');
-    logBox.textContent = `[*] Starting Poloxy ERP Auto Sync for ${syncDate}...\n[*] Connecting to Poloxy ERP (erp.paragon.com.bd)...\n[*] Please wait ~30-50 seconds for parallel depot queries...`;
+    logBox.textContent = `[*] Starting Poloxy ERP Auto Sync for ${syncDate} (Category: ${cat.toUpperCase()})...\n[*] Connecting to Poloxy ERP (erp.paragon.com.bd)...\n[*] Please wait ~30-50 seconds for parallel depot queries...`;
   }
   if (statusEl) {
-    statusEl.innerHTML = `<span style="color:var(--primary); font-weight:700;">⏳ Sync in progress... Fetching live Orders, Deliveries & Parallel Godown Stocks from ERP.</span>`;
+    statusEl.innerHTML = `<span style="color:var(--primary); font-weight:700;">⏳ Sync in progress... Fetching live Orders, Deliveries & Godown Stocks for ${esc(cat)} from ERP.</span>`;
   }
-  msg('Poloxy ERP Sync initiated... Please wait ~30-50 seconds', true);
+  msg(`Poloxy ERP Sync initiated (${cat})... Please wait ~30-50 seconds`, true);
 
   try {
-    const res = await api('POST', '/api/auto-sync', { date: syncDate });
+    const res = await api('POST', '/api/auto-sync', { date: syncDate, category: cat });
     if (statusEl) {
       statusEl.innerHTML = `<span style="color:var(--ok); font-weight:700;">✓ Sync Complete! Saved ${res.saved} depot records for ${res.date} directly to database.</span>`;
     }
@@ -3300,11 +3758,118 @@ async function runPoloxyAutoSync() {
       statusEl.innerHTML = `<span style="color:var(--bad); font-weight:700;">✗ Sync Failed: ${esc(err.message)}</span>`;
     }
     if (logBox) {
-      logBox.textContent += `\n\n[!] Error Details: ${err.message}\n[!] If running on cloud container without direct ERP access, run 'Run_Frozen_Daily_Sync.bat' locally on your office network.`;
+      logBox.textContent += `\n\n[!] Error Details: ${err.message}\n[!] If running on cloud container without direct ERP access, run 'Run_Daily_ERP_Sync.bat' locally on your office network.`;
     }
     msg('Sync error: ' + err.message);
   } finally {
     if (btn) btn.disabled = false;
+  }
+}
+
+// ========================================================
+// ERP DEPOT MAPPING CONFIGURATION (ADMIN)
+// ========================================================
+let erpDepotsList = [];
+let currentErpDepotFilter = 'all';
+
+async function loadErpDepots() {
+  try {
+    const res = await api('GET', '/api/erp-depots');
+    erpDepotsList = res.mappings || [];
+    renderErpDepots();
+  } catch (err) {
+    console.error('Failed to load ERP depots:', err);
+  }
+}
+
+function filterErpDepots(cat, btn) {
+  currentErpDepotFilter = cat;
+  if (btn) {
+    document.querySelectorAll('#erp_depot_cat_filter button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  }
+  renderErpDepots();
+}
+
+function renderErpDepots() {
+  const tb = $('erp_depot_tb');
+  if (!tb) return;
+  const filtered = currentErpDepotFilter === 'all' 
+    ? erpDepotsList 
+    : erpDepotsList.filter(d => (d.category || '').toLowerCase() === currentErpDepotFilter.toLowerCase());
+
+  if (!filtered.length) {
+    tb.innerHTML = `<tr><td colspan="7" class="center sub" style="padding:14px;">No ERP depot mappings found for ${esc(currentErpDepotFilter)}.</td></tr>`;
+    return;
+  }
+
+  tb.innerHTML = filtered.map(d => {
+    const pats = (d.ref_patterns || []).map(p => `<code style="background:var(--bg); padding:2px 5px; border-radius:3px; font-size:11px; margin-right:3px;">${esc(p)}</code>`).join(' ');
+    const catBadge = d.category === 'Frozen' ? 'cover-ok' : d.category === 'Chicken' ? 'cover-warn' : 'cover-info';
+    return `<tr>
+      <td><span class="cover-pill ${catBadge}" style="font-size:11px;">${esc(d.category)}</span></td>
+      <td><b>${esc(d.depot_code)}</b></td>
+      <td>${esc(d.depot_name)}</td>
+      <td style="font-size:12px;">${esc(d.godown_name || '—')} ${d.godown_id ? `<span class="sub">(${esc(d.godown_id)})</span>` : ''}</td>
+      <td style="font-size:12px;">${pats || '<span class="sub">—</span>'}</td>
+      <td class="center">${d.is_default ? '<span style="color:var(--ok); font-weight:700;">✓</span>' : '<span class="sub">—</span>'}</td>
+      <td class="center">
+        <button class="bad sm" onclick="delErpDepot(${d.id})" style="font-size:11px; padding:3px 8px;">Delete</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function openAddErpDepotModal() {
+  $('form-erp-depot').reset();
+  if (currentErpDepotFilter !== 'all') {
+    $('ed_cat').value = currentErpDepotFilter;
+  }
+  $('modal-erp-depot').classList.remove('hid');
+}
+
+function closeAddErpDepotModal() {
+  $('modal-erp-depot').classList.add('hid');
+}
+
+async function saveErpDepot(e) {
+  e.preventDefault();
+  const cat = $('ed_cat').value.trim();
+  const code = $('ed_code').value.trim().toLowerCase();
+  const name = $('ed_name').value.trim();
+  const godown = $('ed_godown').value.trim();
+  const gid = $('ed_godown_id').value.trim();
+  const pats = $('ed_patterns').value.split(',').map(s => s.trim()).filter(Boolean);
+  const isDef = $('ed_is_default').checked;
+
+  if (!cat || !code || !name) return msg('Category, Depot Code and Name are required');
+
+  try {
+    await api('POST', '/api/erp-depots', {
+      category: cat,
+      depot_code: code,
+      depot_name: name,
+      godown_name: godown,
+      godown_id: gid,
+      ref_patterns: pats,
+      is_default: isDef
+    });
+    msg('ERP Depot mapping saved successfully ✓', true);
+    closeAddErpDepotModal();
+    await loadErpDepots();
+  } catch (err) {
+    msg('Error saving ERP depot: ' + err.message);
+  }
+}
+
+async function delErpDepot(id) {
+  if (!confirm('Are you sure you want to delete this ERP depot mapping rule?')) return;
+  try {
+    await api('DELETE', '/api/erp-depots/' + id);
+    msg('Depot rule deleted ✓', true);
+    await loadErpDepots();
+  } catch (err) {
+    msg('Error deleting ERP depot: ' + err.message);
   }
 }
 
