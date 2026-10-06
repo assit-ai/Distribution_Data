@@ -326,23 +326,60 @@ app.delete('/api/categories/:name', auth, admin, wrap(async (req, res) => {
 // ---------- entries ----------
 app.get('/api/entries', auth, wrap(async (req, res) => {
   const d = String(req.query.date || '');
-  if (!DATE.test(d)) return res.status(400).json({ error: 'Invalid date format' });
+  const from = String(req.query.from || d);
+  const to = String(req.query.to || d);
+  if (!DATE.test(from) || !DATE.test(to)) return res.status(400).json({ error: 'Invalid date format' });
   
-  let query = `select to_char(e.entry_date,'YYYY-MM-DD') date, e.depot, e.category, e.orders, e.delivered,
-    e.stock::float8 stock, e.avg_daily::float8 avg_daily, e.updated_at, u.name "by"
-    from entries e left join users u on u.id=e.updated_by where e.entry_date=$1`;
-  const params = [d];
-  
-  if (req.user.role !== 'admin') {
-    const allowedD = (await allowedDepots(req.user)).map(lc);
-    const allowedC = (await allowedCategories(req.user)).map(lc);
-    query += ` and lower(e.depot) = any($2) and lower(e.category) = any($3)`;
-    params.push(allowedD, allowedC);
+  const isRange = from !== to;
+  let query, params;
+
+  if (!isRange) {
+    query = `select to_char(e.entry_date,'YYYY-MM-DD') date, e.depot, e.category, e.orders, e.delivered,
+      e.stock::float8 stock, e.avg_daily::float8 avg_daily, e.updated_at, u.name "by"
+      from entries e left join users u on u.id=e.updated_by where e.entry_date=$1`;
+    params = [from];
+    if (req.user.role !== 'admin') {
+      const allowedD = (await allowedDepots(req.user)).map(lc);
+      const allowedC = (await allowedCategories(req.user)).map(lc);
+      query += ` and lower(e.depot) = any($2) and lower(e.category) = any($3)`;
+      params.push(allowedD, allowedC);
+    }
+    query += ` order by e.category, e.depot`;
+  } else {
+    // For date range: Aggregate orders, delivered, and take the latest available stock in range
+    query = `
+      with latest_stock as (
+        select distinct on (depot, category) depot, category, stock, avg_daily, entry_date
+        from entries
+        where entry_date between $1 and $2
+        order by depot, category, entry_date desc
+      )
+      select
+        $2 as date,
+        e.depot,
+        e.category,
+        sum(e.orders) as orders,
+        sum(e.delivered) as delivered,
+        coalesce(ls.stock, 0)::float8 as stock,
+        coalesce(ls.avg_daily, 0)::float8 as avg_daily,
+        max(e.updated_at) as updated_at,
+        'Range Summary' as "by"
+      from entries e
+      left join latest_stock ls on ls.depot = e.depot and ls.category = e.category
+      where e.entry_date between $1 and $2
+    `;
+    params = [from, to];
+    if (req.user.role !== 'admin') {
+      const allowedD = (await allowedDepots(req.user)).map(lc);
+      const allowedC = (await allowedCategories(req.user)).map(lc);
+      query += ` and lower(e.depot) = any($3) and lower(e.category) = any($4)`;
+      params.push(allowedD, allowedC);
+    }
+    query += ` group by e.depot, e.category, ls.stock, ls.avg_daily order by e.category, e.depot`;
   }
   
-  query += ` order by e.category, e.depot`;
   const r = await pool.query(query, params);
-  res.json({ entries: r.rows });
+  res.json({ entries: r.rows, isRange, from, to });
 }));
 
 app.put('/api/entries', auth, wrap(async (req, res) => {
@@ -359,10 +396,14 @@ app.put('/api/entries', auth, wrap(async (req, res) => {
   const orders = nonNeg(b.orders), delivered = nonNeg(b.delivered), stock = nonNeg(b.stock), avg = nonNeg(b.avg_daily);
   if ([orders, delivered, stock, avg].includes(null)) return res.status(400).json({ error: 'Invalid numerical values' });
   if (delivered > orders) return res.status(400).json({ error: 'Delivered quantity cannot exceed Orders' });
+  
+  const finalOrders = cat === 'Chicken' ? orders : Math.round(orders);
+  const finalDelivered = cat === 'Chicken' ? delivered : Math.round(delivered);
+
   await pool.query(`insert into entries(entry_date,depot,category,orders,delivered,stock,avg_daily,updated_by,updated_at)
     values($1,$2,$3,$4,$5,$6,$7,$8,now())
     on conflict(entry_date,depot,category) do update set orders=$4,delivered=$5,stock=$6,avg_daily=$7,updated_by=$8,updated_at=now()`,
-    [date, depot, cat, Math.round(orders), Math.round(delivered), stock, avg, req.user.id]);
+    [date, depot, cat, finalOrders, finalDelivered, stock, avg, req.user.id]);
   res.json({ ok: true });
 }));
 
@@ -386,17 +427,32 @@ app.post('/api/bulk/entries', auth, wrap(async (req, res) => {
   const allowed = await allowedDepots(req.user);
   const allCats = await getAllCategories();
   let updated = 0, skipped = 0;
+  const skippedDetails = [];
 
   for (const it of items) {
-    const depot = findDepot(allowed, it.depot);
-    if (!depot) { skipped++; continue; }
-    const cat = allCats.find(c => lc(c) === lc(it.category));
-    if (!cat) { skipped++; continue; }
+    const rawDepot = String(it.depot || '').trim();
+    const depot = findDepot(allowed, rawDepot) || (req.user.role === 'admin' ? rawDepot : null);
+    if (!depot) {
+      skipped++;
+      skippedDetails.push(`Unrecognized depot: "${rawDepot}"`);
+      continue;
+    }
+
+    const rawCat = String(it.category || '').trim();
+    const cat = allCats.find(c => lc(c) === lc(rawCat)) || (req.user.role === 'admin' ? (rawCat || 'Frozen') : null);
+    if (!cat) {
+      skipped++;
+      skippedDetails.push(`Unrecognized category: "${rawCat}" for depot ${depot}`);
+      continue;
+    }
 
     const o = it.orders != null && it.orders !== '' ? nonNeg(it.orders) : null;
     const v = it.delivered != null && it.delivered !== '' ? nonNeg(it.delivered) : null;
     const s = it.stock != null && it.stock !== '' ? nonNeg(it.stock) : null;
     const a = it.avg_daily != null && it.avg_daily !== '' ? nonNeg(it.avg_daily) : null;
+
+    const finalOrders = o != null ? (cat === 'Chicken' ? o : Math.round(o)) : null;
+    const finalDelivered = v != null ? (cat === 'Chicken' ? v : Math.round(v)) : null;
 
     await pool.query(`
       insert into entries(entry_date, depot, category, orders, delivered, stock, avg_daily, updated_by, updated_at)
@@ -408,22 +464,45 @@ app.post('/api/bulk/entries', auth, wrap(async (req, res) => {
         avg_daily = coalesce($7, entries.avg_daily),
         updated_by = $8,
         updated_at = now()
-    `, [date, depot, cat, o != null ? Math.round(o) : null, v != null ? Math.round(v) : null, s, a, req.user.id]);
+    `, [date, depot, cat, finalOrders, finalDelivered, s, a, req.user.id]);
     updated++;
   }
-  res.json({ ok: true, updated, skipped });
+  res.json({ ok: true, updated, skipped, skippedDetails, date });
 }));
 
 // ---------- vehicles tracking ----------
 app.get('/api/vehicles', auth, wrap(async (req, res) => {
   const d = String(req.query.date || '');
-  if (!DATE.test(d)) return res.status(400).json({ error: 'Invalid date format' });
-  const r = await pool.query(`
-    select to_char(v.entry_date,'YYYY-MM-DD') date, v.depot, v.total_vehicles, v.dispatched,
-      v.on_road, v.delivered, coalesce(v.under_maintenance, 0) as under_maintenance, v.notes, v.updated_at, u.name "by"
-    from depot_vehicles v left join users u on u.id=v.updated_by
-    where v.entry_date=$1 order by v.depot
-  `, [d]);
+  const from = String(req.query.from || d);
+  const to = String(req.query.to || d);
+  if (!DATE.test(from) || !DATE.test(to)) return res.status(400).json({ error: 'Invalid date format' });
+
+  let query, params;
+  if (from === to) {
+    query = `
+      select to_char(v.entry_date,'YYYY-MM-DD') date, v.depot, v.total_vehicles, v.dispatched,
+        v.on_road, v.delivered, coalesce(v.under_maintenance, 0) as under_maintenance, v.notes, v.updated_at, u.name "by"
+      from depot_vehicles v left join users u on u.id=v.updated_by
+      where v.entry_date=$1 order by v.depot
+    `;
+    params = [from];
+  } else {
+    query = `
+      with latest_v as (
+        select distinct on (depot) depot, total_vehicles, dispatched, on_road, delivered, under_maintenance, notes, updated_at, updated_by
+        from depot_vehicles
+        where entry_date between $1 and $2
+        order by depot, entry_date desc
+      )
+      select
+        $2 as date, lv.depot, lv.total_vehicles, lv.dispatched, lv.on_road, lv.delivered,
+        coalesce(lv.under_maintenance, 0) as under_maintenance, lv.notes, lv.updated_at, u.name "by"
+      from latest_v lv left join users u on u.id=lv.updated_by
+      order by lv.depot
+    `;
+    params = [from, to];
+  }
+  const r = await pool.query(query, params);
   res.json({ vehicles: r.rows });
 }));
 
@@ -452,12 +531,15 @@ app.put('/api/vehicles', auth, wrap(async (req, res) => {
 // ---------- individual vehicle dispatch logs ----------
 app.get('/api/dispatches', auth, wrap(async (req, res) => {
   const d = String(req.query.date || '');
-  if (!DATE.test(d)) return res.status(400).json({ error: 'Invalid date format' });
+  const from = String(req.query.from || d);
+  const to = String(req.query.to || d);
+  if (!DATE.test(from) || !DATE.test(to)) return res.status(400).json({ error: 'Invalid date format' });
+
   let query = `select vd.id, to_char(vd.entry_date,'YYYY-MM-DD') date, vd.depot, vd.vehicle_no, vd.dispatch_time,
     vd.driver_name, vd.destination, vd.status, vd.notes, vd.created_at, u.name "by"
     from vehicle_dispatches vd left join users u on u.id=vd.created_by
-    where vd.entry_date=$1 order by vd.depot, vd.dispatch_time, vd.id`;
-  const r = await pool.query(query, [d]);
+    where vd.entry_date between $1 and $2 order by vd.entry_date, vd.depot, vd.dispatch_time, vd.id`;
+  const r = await pool.query(query, [from, to]);
   let rows = r.rows;
   if (req.user.role !== 'admin') {
     const allowedD = await allowedDepots(req.user);
@@ -523,16 +605,21 @@ app.get('/api/registered-vans', auth, wrap(async (req, res) => {
 
 // ---------- Poloxy ERP Auto Sync (Web Trigger) ----------
 app.post('/api/auto-sync', auth, admin, wrap(async (req, res) => {
-  const { date, category } = req.body;
-  const targetDate = String(date || '').trim() || new Date().toISOString().slice(0, 10);
-  if (!DATE.test(targetDate)) return res.status(400).json({ error: 'Invalid date format (expected YYYY-MM-DD)' });
+  const { date, from_date, to_date, category } = req.body;
+  const startDate = String(from_date || date || '').trim() || new Date().toISOString().slice(0, 10);
+  const endDate = String(to_date || date || startDate).trim();
+  if (!DATE.test(startDate) || !DATE.test(endDate)) {
+    return res.status(400).json({ error: 'Invalid date format (expected YYYY-MM-DD)' });
+  }
 
   // Convert YYYY-MM-DD to DD/MM/YYYY for Poloxy
-  const [y, m, d] = targetDate.split('-');
-  const poloxyDate = `${d}/${m}/${y}`;
+  const [sy, sm, sd] = startDate.split('-');
+  const poloxyStart = `${sd}/${sm}/${sy}`;
+  const [ey, em, ed] = endDate.split('-');
+  const poloxyEnd = `${ed}/${em}/${ey}`;
   const catParam = String(category || 'all').trim();
 
-  // Ensure latest DB mappings are written to depot_mappings.json for the Python sync
+  // Ensure latest DB mappings are written to depot_mappings.json for Python sync
   await syncDepotMappingsToFile();
 
   const scriptPath = path.join(__dirname, 'sync_frozen_daily.py');
@@ -543,7 +630,7 @@ app.post('/api/auto-sync', auth, admin, wrap(async (req, res) => {
   const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
   let stdoutData = '', stderrData = '';
   
-  const args = [scriptPath, poloxyDate, `--category=${catParam}`, '--json'];
+  const args = [scriptPath, `--start=${poloxyStart}`, `--end=${poloxyEnd}`, `--category=${catParam}`, '--json'];
   const child = spawn(pythonCmd, args, {
     cwd: __dirname,
     env: { ...process.env, PYTHONUNBUFFERED: '1' }
@@ -557,7 +644,7 @@ app.post('/api/auto-sync', auth, admin, wrap(async (req, res) => {
     if (replied) return;
     replied = true;
     return res.status(500).json({
-      error: `Could not start Python: ${err.message}. If running in cloud container without direct ERP access, run the 1-click desktop sync (Run_Frozen_Daily_Sync.bat / Run_Daily_ERP_Sync.bat).`,
+      error: `Could not start Python: ${err.message}. If running in cloud container without direct ERP access, run 'Run_Frozen_Daily_Sync.bat' locally on your office network.`,
       details: err.message
     });
   });
@@ -594,7 +681,11 @@ app.post('/api/auto-sync', auth, admin, wrap(async (req, res) => {
         const ordVal = nonNeg(it.orders) || 0;
         const delVal = nonNeg(it.delivered) || 0;
         const stkVal = nonNeg(it.stock) || 0;
-        const avgVal = nonNeg(it.avg_daily_mtd != null ? it.avg_daily_mtd : it.avg_daily) || 0;
+        const avgVal = nonNeg(it.avg_daily != null ? it.avg_daily : it.avg_daily_mtd) || 0;
+        const itDate = it.entry_date || endDate;
+
+        const finalOrders = cat === 'Chicken' ? ordVal : Math.round(ordVal);
+        const finalDelivered = cat === 'Chicken' ? delVal : Math.round(delVal);
 
         await pool.query(`
           insert into entries(entry_date, depot, category, orders, delivered, stock, avg_daily, updated_by, updated_at)
@@ -606,13 +697,15 @@ app.post('/api/auto-sync', auth, admin, wrap(async (req, res) => {
             avg_daily = excluded.avg_daily,
             updated_by = excluded.updated_by,
             updated_at = now()
-        `, [targetDate, depot, cat, ordVal, delVal, stkVal, avgVal, req.user.id]);
+        `, [itDate, depot, cat, finalOrders, finalDelivered, stkVal, avgVal, req.user.id]);
         saved++;
       }
 
       res.json({
         ok: true,
-        date: targetDate,
+        date: endDate,
+        startDate,
+        endDate,
         category: catParam,
         saved,
         items,
@@ -758,9 +851,30 @@ app.post('/api/bulk/vehicles', auth, wrap(async (req, res) => {
 // ---------- sales & issues report (admin write) ----------
 app.get('/api/report', auth, wrap(async (req, res) => {
   const d = String(req.query.date || '');
-  if (!DATE.test(d)) return res.status(400).json({ error: 'Invalid date format' });
-  const r = await pool.query(`select head, today_sales::float8, today_target::float8, mtd_sales::float8, mtd_target::float8, top_depot, low_depot, issues
-    from reports where report_date=$1`, [d]);
+  const from = String(req.query.from || d);
+  const to = String(req.query.to || d);
+  if (!DATE.test(from) || !DATE.test(to)) return res.status(400).json({ error: 'Invalid date format' });
+
+  if (from === to) {
+    const r = await pool.query(`select head, today_sales::float8, today_target::float8, mtd_sales::float8, mtd_target::float8, top_depot, low_depot, issues
+      from reports where report_date=$1`, [from]);
+    return res.json({ report: r.rows[0] || { head: 'Atikur', today_sales: 0, today_target: 0, mtd_sales: 0, mtd_target: 0, top_depot: '', low_depot: '', issues: '' } });
+  }
+
+  // Date range aggregation for overview
+  const r = await pool.query(`
+    select
+      max(head) as head,
+      coalesce(sum(today_sales), 0)::float8 as today_sales,
+      coalesce(sum(today_target), 0)::float8 as today_target,
+      coalesce(max(mtd_sales), 0)::float8 as mtd_sales,
+      coalesce(max(mtd_target), 0)::float8 as mtd_target,
+      max(top_depot) as top_depot,
+      max(low_depot) as low_depot,
+      string_agg(distinct issues, ' | ') as issues
+    from reports
+    where report_date between $1 and $2
+  `, [from, to]);
   res.json({ report: r.rows[0] || { head: 'Atikur', today_sales: 0, today_target: 0, mtd_sales: 0, mtd_target: 0, top_depot: '', low_depot: '', issues: '' } });
 }));
 
@@ -773,6 +887,67 @@ app.put('/api/report', auth, admin, wrap(async (req, res) => {
     on conflict(report_date) do update set head=$2,today_sales=$3,today_target=$4,mtd_sales=$5,mtd_target=$6,top_depot=$7,low_depot=$8,issues=$9`,
     [date, String(b.head || 'Atikur').slice(0, 100), ...n, String(b.top_depot || '').slice(0, 100), String(b.low_depot || '').slice(0, 100), String(b.issues || '').slice(0, 5000)]);
   res.json({ ok: true });
+}));
+
+// ---------- Purge / Clear Data (Admin Only) ----------
+app.post('/api/admin/clear-data', auth, admin, wrap(async (req, res) => {
+  const { from_date, to_date, clear_entries, clear_dispatches, clear_vehicles, clear_reports, depot, category } = req.body;
+  if (!DATE.test(String(from_date || '')) || !DATE.test(String(to_date || ''))) {
+    return res.status(400).json({ error: 'Valid From and To dates required (format: YYYY-MM-DD)' });
+  }
+
+  let deleted_entries = 0, deleted_dispatches = 0, deleted_vehicles = 0, deleted_reports = 0;
+
+  if (clear_entries) {
+    let q = 'delete from entries where entry_date between $1 and $2';
+    const params = [from_date, to_date];
+    if (depot && depot !== 'all') {
+      params.push(depot);
+      q += ` and lower(depot) = lower($${params.length})`;
+    }
+    if (category && category !== 'all') {
+      params.push(category);
+      q += ` and lower(category) = lower($${params.length})`;
+    }
+    const r = await pool.query(q, params);
+    deleted_entries = r.rowCount || 0;
+  }
+
+  if (clear_dispatches) {
+    let q = 'delete from vehicle_dispatches where entry_date between $1 and $2';
+    const params = [from_date, to_date];
+    if (depot && depot !== 'all') {
+      params.push(depot);
+      q += ` and lower(depot) = lower($${params.length})`;
+    }
+    const r = await pool.query(q, params);
+    deleted_dispatches = r.rowCount || 0;
+  }
+
+  if (clear_vehicles) {
+    let q = 'delete from depot_vehicles where entry_date between $1 and $2';
+    const params = [from_date, to_date];
+    if (depot && depot !== 'all') {
+      params.push(depot);
+      q += ` and lower(depot) = lower($${params.length})`;
+    }
+    const r = await pool.query(q, params);
+    deleted_vehicles = r.rowCount || 0;
+  }
+
+  if (clear_reports) {
+    const r = await pool.query('delete from reports where report_date between $1 and $2', [from_date, to_date]);
+    deleted_reports = r.rowCount || 0;
+  }
+
+  res.json({
+    ok: true,
+    deleted_entries,
+    deleted_dispatches,
+    deleted_vehicles,
+    deleted_reports,
+    total_deleted: deleted_entries + deleted_dispatches + deleted_vehicles + deleted_reports
+  });
 }));
 
 // ---------- user management (admin) ----------

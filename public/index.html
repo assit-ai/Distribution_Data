@@ -503,9 +503,14 @@ tr:hover td { background: rgba(0,0,0,0.015); }
       <div class="sub" id="who"></div>
     </div>
     <div class="header-actions">
-      <div style="display:flex; align-items:center; gap:6px;">
-        <label style="margin:0; font-size:12px;">Date:</label>
-        <input id="date" type="date" style="width:auto; padding:5px 8px;" onchange="loadAll()">
+      <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+        <label style="margin:0; font-size:12px; font-weight:600;">From:</label>
+        <input id="date" type="date" style="width:auto; padding:5px 8px;" onchange="if(!$('date_to').value)$('date_to').value=this.value; loadAll()">
+        <label style="margin:0; font-size:12px; font-weight:600;">To:</label>
+        <input id="date_to" type="date" style="width:auto; padding:5px 8px;" onchange="loadAll()">
+        <button class="s sm" onclick="setQuickDate('today')" style="padding:4px 7px; font-size:11px;" title="View Today">Today</button>
+        <button class="s sm" onclick="setQuickDate('yesterday')" style="padding:4px 7px; font-size:11px;" title="View Yesterday">Yesterday</button>
+        <button class="s sm" onclick="setQuickDate('mtd')" style="padding:4px 7px; font-size:11px;" title="Month to Date">MTD</button>
       </div>
       <button class="sm" onclick="showPw(true)">Change Password</button>
       <button class="sm" onclick="doLogout()">Logout</button>
@@ -1013,10 +1018,14 @@ Savar	DM-THA-12-3040	Abdul Ali	01811000002	2.0 Ton Van	active" oninput="parsePas
         <p class="sub" style="margin-bottom:12px;">
           Automatically logs in to <b>Poloxy ERP (erp.paragon.com.bd)</b>, extracts <b>Orders, Delivered (Today & MTD), Closing Stock</b> across depots for <b>Frozen Foods, Process Chicken, and Branded Eggs</b>, calculates daily sales averages and stock covers, and saves directly into the database.
         </p>
-        <div class="g" style="grid-template-columns: 1fr 1fr auto; gap:12px; align-items:flex-end;">
+        <div class="g" style="grid-template-columns: 1fr 1fr 1.5fr auto; gap:12px; align-items:flex-end;">
           <div>
-            <label>Select Target Date</label>
-            <input type="date" id="auto_sync_date">
+            <label>From Date</label>
+            <input type="date" id="auto_sync_from_date">
+          </div>
+          <div>
+            <label>To Date</label>
+            <input type="date" id="auto_sync_to_date">
           </div>
           <div>
             <label>Product Category</label>
@@ -1032,6 +1041,9 @@ Savar	DM-THA-12-3040	Abdul Ali	01811000002	2.0 Ton Van	active" oninput="parsePas
               <span>⚡ Start Poloxy Auto Sync</span>
             </button>
           </div>
+        </div>
+        <div class="sub" style="font-size:11px; margin-top:6px; color:var(--mut);">
+          💡 <b>Tip:</b> For a specific single date report, keep both <b>From Date</b> and <b>To Date</b> identical. It will extract only that date's exact data (no unwanted MTD). Or set different dates to extract that exact date range.
         </div>
         <div id="auto_sync_status" style="margin-top:12px; font-size:13px;"></div>
         <pre id="auto_sync_logs" class="hid" style="margin-top:12px; max-height:220px; overflow-y:auto; background:#0f172a; color:#38bdf8; padding:12px; border-radius:6px; font-size:12px; font-family:monospace; line-height:1.4; white-space:pre-wrap; border:1px solid #334155;"></pre>
@@ -1074,7 +1086,11 @@ Savar	Egg	42000	7500" oninput="parsePastedTable()"></textarea>
         </div>
 
         <!-- Auto Column Matcher Options -->
-        <div class="g" style="margin-top:12px;">
+        <div class="g" style="margin-top:12px; grid-template-columns: 1fr 1.2fr auto; gap:10px; align-items:flex-end;">
+          <div>
+            <label>Target Date for Manual Upload</label>
+            <input type="date" id="bulk_target_date">
+          </div>
           <div>
             <label>Upload Type</label>
             <select id="bulk-mode">
@@ -1083,12 +1099,13 @@ Savar	Egg	42000	7500" oninput="parsePastedTable()"></textarea>
               <option value="orders">🛒 Orders & Delivery Only</option>
             </select>
           </div>
-          <div style="display:flex; align-items:flex-end;">
-            <button class="p" onclick="processAndCommitBulk()" id="btn-commit-bulk" disabled>
+          <div>
+            <button class="p" onclick="processAndCommitBulk()" id="btn-commit-bulk" disabled style="padding:10px 16px;">
               Save All Parsed Rows to Database
             </button>
           </div>
         </div>
+        <div id="bulk_commit_msg" style="margin-top:10px;"></div>
 
         <!-- Parsed Preview -->
         <div id="bulk-preview-wrap" class="hid" style="margin-top:16px;">
@@ -1268,6 +1285,58 @@ Savar	Egg	42000	7500" oninput="parsePastedTable()"></textarea>
         </div>
         <div class="btn-row" style="margin-top:14px;">
           <button class="p" onclick="addUser()">Create User</button>
+        </div>
+      </div>
+
+      <!-- PURGE / CLEAR DATA BY DATE RANGE (ADMIN ONLY) -->
+      <div class="card" style="margin-top:20px; background:var(--bg); border:1px solid rgba(239, 68, 68, 0.3); border-radius:8px; padding:16px;">
+        <div class="card-header" style="margin-bottom:8px;">
+          <div class="card-title" style="font-size:14px; color:var(--bad);">🗑️ Clear / Purge Data by Date Range</div>
+        </div>
+        <p class="sub" style="margin-bottom:12px; font-size:12px;">
+          Cleanly delete incorrectly entered, duplicate, or test data for a selected date range. Action requires confirmation and cannot be undone.
+        </p>
+        <div class="g" style="grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap:10px; margin-bottom:12px;">
+          <div>
+            <label>From Date</label>
+            <input type="date" id="purge_from">
+          </div>
+          <div>
+            <label>To Date</label>
+            <input type="date" id="purge_to">
+          </div>
+          <div>
+            <label>Filter Depot</label>
+            <select id="purge_depot">
+              <option value="all">All Depots</option>
+            </select>
+          </div>
+          <div>
+            <label>Filter Category</label>
+            <select id="purge_cat">
+              <option value="all">All Categories</option>
+            </select>
+          </div>
+        </div>
+        <div style="display:flex; flex-wrap:wrap; gap:16px; margin-bottom:14px; font-size:12px;">
+          <label style="display:flex; align-items:center; gap:5px; margin:0; cursor:pointer;">
+            <input type="checkbox" id="chk_purge_entries" checked style="width:auto;"> Depot Entries (Orders/Delivered/Stock)
+          </label>
+          <label style="display:flex; align-items:center; gap:5px; margin:0; cursor:pointer;">
+            <input type="checkbox" id="chk_purge_dispatches" checked style="width:auto;"> Vehicle Dispatches Logs
+          </label>
+          <label style="display:flex; align-items:center; gap:5px; margin:0; cursor:pointer;">
+            <input type="checkbox" id="chk_purge_vehicles" checked style="width:auto;"> Depot Fleet Vehicles Status
+          </label>
+          <label style="display:flex; align-items:center; gap:5px; margin:0; cursor:pointer;">
+            <input type="checkbox" id="chk_purge_reports" style="width:auto;"> Sales Executive Summary Report
+          </label>
+        </div>
+        <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+          <button class="bad" onclick="doClearDataRange()" style="padding:8px 16px; font-weight:700;">
+            🗑️ Clear Data in Range
+          </button>
+          <div id="purge_status_msg" style="font-size:12px;"></div>
         </div>
       </div>
     </div>
@@ -1888,13 +1957,14 @@ async function boot() {
   document.querySelectorAll('.adm').forEach(el => el.classList.toggle('hid', !isAdmin));
 
   // Set default today date in local timezone
-  if (!$('date').value) {
-    const local = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
-    $('date').value = local;
-  }
-  if ($('auto_sync_date') && !$('auto_sync_date').value) {
-    $('auto_sync_date').value = $('date').value;
-  }
+  const local = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  if (!$('date').value) $('date').value = local;
+  if ($('date_to') && !$('date_to').value) $('date_to').value = $('date').value;
+  if ($('auto_sync_from_date') && !$('auto_sync_from_date').value) $('auto_sync_from_date').value = $('date').value;
+  if ($('auto_sync_to_date') && !$('auto_sync_to_date').value) $('auto_sync_to_date').value = $('date').value;
+  if ($('bulk_target_date') && !$('bulk_target_date').value) $('bulk_target_date').value = $('date').value;
+  if ($('purge_from') && !$('purge_from').value) $('purge_from').value = $('date').value;
+  if ($('purge_to') && !$('purge_to').value) $('purge_to').value = $('date').value;
 
   if (me.must_change) {
     showPw(true, true);
@@ -1911,17 +1981,50 @@ async function boot() {
   setInterval(() => { if (!document.hidden && me && !me.must_change) loadAll(true); }, 30000);
 }
 
+function setQuickDate(type) {
+  const local = new Date(Date.now() - new Date().getTimezoneOffset() * 60000);
+  const todayStr = local.toISOString().slice(0, 10);
+  if (type === 'today') {
+    $('date').value = todayStr;
+    if ($('date_to')) $('date_to').value = todayStr;
+  } else if (type === 'yesterday') {
+    const yest = new Date(local);
+    yest.setDate(yest.getDate() - 1);
+    const yestStr = yest.toISOString().slice(0, 10);
+    $('date').value = yestStr;
+    if ($('date_to')) $('date_to').value = yestStr;
+  } else if (type === 'mtd') {
+    const mtdStart = todayStr.slice(0, 8) + '01';
+    $('date').value = mtdStart;
+    if ($('date_to')) $('date_to').value = todayStr;
+  }
+  loadAll();
+}
+
+function populatePurgeDropdowns() {
+  const pDep = $('purge_depot');
+  if (pDep && deps && deps.length && pDep.options.length <= 1) {
+    pDep.innerHTML = '<option value="all">All Depots</option>' + deps.map(d => `<option value="${esc(d)}">${esc(d)}</option>`).join('');
+  }
+  const pCat = $('purge_cat');
+  if (pCat && CATS && CATS.length && pCat.options.length <= 1) {
+    pCat.innerHTML = '<option value="all">All Categories</option>' + CATS.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('');
+  }
+}
+
 // Load Data
 async function loadAll(quiet = false) {
-  const d = $('date').value;
-  if (!d) return;
+  const fromD = $('date').value;
+  const toD = ($('date_to') && $('date_to').value) ? $('date_to').value : fromD;
+  if (!fromD) return;
+  const dParam = `from=${fromD}&to=${toD}`;
   try {
     const [entRes, repRes, depRes, fltRes, dspRes, vanRes] = await Promise.all([
-      api('GET', '/api/entries?date=' + d),
-      api('GET', '/api/report?date=' + d),
+      api('GET', '/api/entries?' + dParam),
+      api('GET', '/api/report?' + dParam),
       api('GET', '/api/depots'),
-      api('GET', '/api/vehicles?date=' + d),
-      api('GET', '/api/dispatches?date=' + d).catch(() => ({ dispatches: [] })),
+      api('GET', '/api/vehicles?' + dParam),
+      api('GET', '/api/dispatches?' + dParam).catch(() => ({ dispatches: [] })),
       api('GET', '/api/registered-vans').catch(() => ({ vans: [] }))
     ]);
     ents = entRes.entries;
@@ -1929,6 +2032,7 @@ async function loadAll(quiet = false) {
     vehicles = fltRes.vehicles;
     dispatches = dspRes.dispatches || [];
     registeredVans = vanRes.vans || [];
+    populatePurgeDropdowns();
 
     // Populate Report Fields
     const r = repRes.report;
@@ -2271,7 +2375,12 @@ function formatDateWhatsApp(dateStr) {
 // WhatsApp Report Generator (Exact match to User's Specification with Dynamic Categories)
 function genReport() {
   const head = $('head').value || 'Atikur';
-  const dateFormatted = formatDateWhatsApp($('date').value);
+  const fromVal = $('date').value;
+  const toVal = $('date_to') ? $('date_to').value : fromVal;
+  const isRange = Boolean(fromVal && toVal && fromVal !== toVal);
+  const dateFormatted = isRange
+    ? `${formatDateWhatsApp(fromVal)} to ${formatDateWhatsApp(toVal)}`
+    : formatDateWhatsApp(fromVal);
   const st = num($('st').value), stt = num($('stt').value);
   const sm = num($('sm').value), smt = num($('smt').value);
   const topDep = $('top_depot').value || '—';
@@ -2289,6 +2398,8 @@ function genReport() {
   });
   const totVehiclesOnRoad = Math.max(0, totV - totD - totVehiclesMaint);
 
+  const salesLabel = isRange ? 'Period Sales' : 'Today';
+
   const L = [
     `*Cluster Manager Daily Update*`,
     ``,
@@ -2297,7 +2408,7 @@ function genReport() {
     ``,
     `*Key Points:*`,
     `📈 *GT Frozen Sales*`,
-    `- Today: ${fmt(st)} (Target ${fmt(stt)} | Ach ${pct(st, stt)}%)`,
+    `- ${salesLabel}: ${fmt(st)} (Target ${fmt(stt)} | Ach ${pct(st, stt)}%)`,
     `- MTD: ${fmt(sm)} (Target ${fmt(smt)} | Ach ${pct(sm, smt)}%)`,
     `- Top: ${topDep} | Low: ${lowDep}`,
     ``,
@@ -2356,10 +2467,12 @@ function copyReport() {
 // DISPATCHED VANS & PENDING DRILL-DOWN MODALS
 // ========================================================
 async function loadDispatches(quiet = false) {
-  const d = $('date').value;
-  if (!d) return;
+  const fromD = $('date').value;
+  const toD = ($('date_to') && $('date_to').value) ? $('date_to').value : fromD;
+  if (!fromD) return;
+  const dParam = `from=${fromD}&to=${toD}`;
   try {
-    const res = await api('GET', '/api/dispatches?date=' + d);
+    const res = await api('GET', '/api/dispatches?' + dParam);
     dispatches = res.dispatches || [];
     renderDispatchesModal();
     renderDepotDispatches();
@@ -3443,9 +3556,17 @@ function renderBulkPreview() {
 }
 
 async function processAndCommitBulk() {
-  if (!parsedBulkRows.length) return;
-  const d = $('date').value;
+  if (!parsedBulkRows.length) return msg('No parsed rows to save. Please upload a file or paste Excel data first.');
+  const d = ($('bulk_target_date') && $('bulk_target_date').value) ? $('bulk_target_date').value : $('date').value;
+  if (!d) return msg('Please select a Target Date for Manual Upload');
   const mode = $('bulk-mode').value;
+  const statusEl = $('bulk_commit_msg');
+
+  const btn = $('btn-commit-bulk');
+  if (btn) btn.disabled = true;
+  if (statusEl) {
+    statusEl.innerHTML = `<span style="color:var(--primary); font-weight:600;">⏳ Saving ${parsedBulkRows.length} rows to database...</span>`;
+  }
 
   const payload = parsedBulkRows.map(r => {
     const item = { depot: r.depot, category: r.category };
@@ -3462,14 +3583,35 @@ async function processAndCommitBulk() {
 
   try {
     const res = await api('POST', '/api/bulk/entries', { date: d, items: payload });
-    msg(`Bulk Upload Successful! Updated: ${res.updated} rows ✓`, true);
+    if (statusEl) {
+      if (res.updated > 0) {
+        statusEl.innerHTML = `
+          <div style="background:rgba(34, 197, 94, 0.15); border:1px solid var(--ok); color:var(--ok); padding:10px 14px; border-radius:6px; font-size:13px; font-weight:600; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+            <span>✓ Successfully saved ${res.updated} rows to database for ${d}!</span>
+            <button class="s sm" onclick="setTab('dash')" style="font-size:11px; padding:4px 8px;">View in Dashboard →</button>
+          </div>
+          ${res.skipped > 0 ? `<div style="color:var(--warn); font-size:12px; margin-top:6px;">⚠️ Note: ${res.skipped} rows skipped (depot or category not recognized: ${esc(res.skippedDetails?.slice(0, 3).join(', '))})</div>` : ''}
+        `;
+      } else {
+        statusEl.innerHTML = `
+          <div style="background:rgba(239, 68, 68, 0.15); border:1px solid var(--bad); color:var(--bad); padding:10px 14px; border-radius:6px; font-size:13px;">
+            ⚠️ 0 rows saved. ${res.skipped} rows skipped: ${esc(res.skippedDetails?.slice(0, 5).join(', ') || 'unmatched depot or category')}.
+          </div>
+        `;
+      }
+    }
+    msg(`Bulk Upload: ${res.updated} rows saved ✓`, res.updated > 0);
     parsedBulkRows = [];
     $('bulk-paste').value = '';
     renderBulkPreview();
-    setTab('dash');
     await loadAll(true);
   } catch (e) {
+    if (statusEl) {
+      statusEl.innerHTML = `<span style="color:var(--bad); font-weight:600;">✗ Bulk upload failed: ${esc(e.message)}</span>`;
+    }
     msg('Bulk upload failed: ' + e.message);
+  } finally {
+    if (btn) btn.disabled = parsedBulkRows.length === 0;
   }
 }
 
@@ -3724,28 +3866,32 @@ async function doForgot() {
 }
 
 async function runPoloxyAutoSync() {
-  const syncDate = ($('auto_sync_date') && $('auto_sync_date').value) ? $('auto_sync_date').value : $('date').value;
-  if (!syncDate) return msg('Please select a target date for sync');
+  const fromD = ($('auto_sync_from_date') && $('auto_sync_from_date').value) ? $('auto_sync_from_date').value : $('date').value;
+  const toD = ($('auto_sync_to_date') && $('auto_sync_to_date').value) ? $('auto_sync_to_date').value : fromD;
+  if (!fromD || !toD) return msg('Please select valid From and To dates for sync');
   const cat = ($('auto_sync_cat') && $('auto_sync_cat').value) ? $('auto_sync_cat').value : 'all';
 
   const btn = $('btn_run_auto_sync');
   const logBox = $('auto_sync_logs');
   const statusEl = $('auto_sync_status');
 
+  const isSingle = (fromD === toD);
+  const dateLabel = isSingle ? fromD : `${fromD} to ${toD}`;
+
   if (btn) btn.disabled = true;
   if (logBox) {
     logBox.classList.remove('hid');
-    logBox.textContent = `[*] Starting Poloxy ERP Auto Sync for ${syncDate} (Category: ${cat.toUpperCase()})...\n[*] Connecting to Poloxy ERP (erp.paragon.com.bd)...\n[*] Please wait ~30-50 seconds for parallel depot queries...`;
+    logBox.textContent = `[*] Starting Poloxy ERP Auto Sync for ${dateLabel} (Category: ${cat.toUpperCase()})...\n[*] Extraction Mode: ${isSingle ? 'Single Exact Date (No MTD)' : 'Date Range Exact Extraction'}...\n[*] Connecting to Poloxy ERP (erp.paragon.com.bd)...\n[*] Please wait ~30-50 seconds for parallel depot queries...`;
   }
   if (statusEl) {
-    statusEl.innerHTML = `<span style="color:var(--primary); font-weight:700;">⏳ Sync in progress... Fetching live Orders, Deliveries & Godown Stocks for ${esc(cat)} from ERP.</span>`;
+    statusEl.innerHTML = `<span style="color:var(--primary); font-weight:700;">⏳ Sync in progress... Fetching exact Orders, Deliveries & Stocks for ${esc(cat)} (${dateLabel}) from ERP.</span>`;
   }
-  msg(`Poloxy ERP Sync initiated (${cat})... Please wait ~30-50 seconds`, true);
+  msg(`Poloxy ERP Sync initiated (${cat} - ${dateLabel})... Please wait`, true);
 
   try {
-    const res = await api('POST', '/api/auto-sync', { date: syncDate, category: cat });
+    const res = await api('POST', '/api/auto-sync', { from_date: fromD, to_date: toD, category: cat });
     if (statusEl) {
-      statusEl.innerHTML = `<span style="color:var(--ok); font-weight:700;">✓ Sync Complete! Saved ${res.saved} depot records for ${res.date} directly to database.</span>`;
+      statusEl.innerHTML = `<span style="color:var(--ok); font-weight:700;">✓ Sync Complete! Saved ${res.saved} depot records for ${dateLabel} directly to database.</span>`;
     }
     if (logBox && res.stdout) {
       logBox.textContent = res.stdout;
@@ -3758,7 +3904,7 @@ async function runPoloxyAutoSync() {
       statusEl.innerHTML = `<span style="color:var(--bad); font-weight:700;">✗ Sync Failed: ${esc(err.message)}</span>`;
     }
     if (logBox) {
-      logBox.textContent += `\n\n[!] Error Details: ${err.message}\n[!] If running on cloud container without direct ERP access, run 'Run_Daily_ERP_Sync.bat' locally on your office network.`;
+      logBox.textContent += `\n\n[!] Error Details: ${err.message}\n[!] If running on cloud container without direct ERP access, run 'Run_Frozen_Daily_Sync.bat' locally on your office network.`;
     }
     msg('Sync error: ' + err.message);
   } finally {
@@ -3870,6 +4016,58 @@ async function delErpDepot(id) {
     await loadErpDepots();
   } catch (err) {
     msg('Error deleting ERP depot: ' + err.message);
+  }
+}
+
+// ========================================================
+// PURGE / CLEAR DATA BY DATE RANGE (ADMIN)
+// ========================================================
+async function doClearDataRange() {
+  const from_date = $('purge_from') ? $('purge_from').value : '';
+  const to_date = $('purge_to') ? $('purge_to').value : '';
+  if (!from_date || !to_date) return msg('Please select valid From and To dates to clear');
+
+  const clear_entries = $('chk_purge_entries').checked;
+  const clear_dispatches = $('chk_purge_dispatches').checked;
+  const clear_vehicles = $('chk_purge_vehicles').checked;
+  const clear_reports = $('chk_purge_reports').checked;
+  const depot = $('purge_depot').value;
+  const category = $('purge_cat').value;
+
+  if (!clear_entries && !clear_dispatches && !clear_vehicles && !clear_reports) {
+    return msg('Please select at least one data type checkbox to clear');
+  }
+
+  const promptMsg = `⚠️ CAUTION: Are you sure you want to permanently DELETE selected records between ${from_date} and ${to_date}?\n\nFilters: Depot=${depot}, Category=${category}\nThis action CANNOT be undone!`;
+  if (!confirm(promptMsg)) return;
+
+  const statusEl = $('purge_status_msg');
+  if (statusEl) statusEl.innerHTML = `<span style="color:var(--warn); font-weight:600;">⏳ Deleting data in range...</span>`;
+
+  try {
+    const res = await api('POST', '/api/admin/clear-data', {
+      from_date,
+      to_date,
+      clear_entries,
+      clear_dispatches,
+      clear_vehicles,
+      clear_reports,
+      depot,
+      category
+    });
+
+    const summaryText = `Deleted total ${res.total_deleted} records (Entries: ${res.deleted_entries}, Dispatches: ${res.deleted_dispatches}, Vehicles: ${res.deleted_vehicles}, Reports: ${res.deleted_reports})`;
+    if (statusEl) {
+      statusEl.innerHTML = `<span style="color:var(--ok); font-weight:600;">✓ ${summaryText}</span>`;
+    }
+    msg(`Data cleared successfully: ${res.total_deleted} records removed ✓`, true);
+    await loadAll(true);
+    await loadDispatches(true);
+  } catch (err) {
+    if (statusEl) {
+      statusEl.innerHTML = `<span style="color:var(--bad); font-weight:600;">✗ Clear data failed: ${esc(err.message)}</span>`;
+    }
+    msg('Clear data error: ' + err.message);
   }
 }
 

@@ -6,9 +6,14 @@ echo          PARAGON AGRO LTD. - DAILY SALES PORTAL AUTO SYNC
 echo          Categories: Frozen Foods, Process Chicken, Branded Eggs
 echo ======================================================================
 echo.
-echo Please enter the Date for report (Format: DD/MM/YYYY)
-echo Or simply press [Enter] to sync for Today (%date%):
-set /p TARGET_DATE="Date [DD/MM/YYYY]: "
+echo Please enter Start Date (Format: DD/MM/YYYY)
+echo Or simply press [Enter] for Today (%date%):
+set /p START_DATE="Start Date [DD/MM/YYYY]: "
+
+echo.
+echo Please enter End Date (Format: DD/MM/YYYY)
+echo Or press [Enter] for same as Start Date:
+set /p END_DATE="End Date [DD/MM/YYYY]: "
 
 echo.
 echo Select Category to Sync:
@@ -25,7 +30,11 @@ if "%CAT_CHOICE%"=="4" set CAT_ARG=Egg
 
 echo.
 echo Running Automated Poloxy Extraction (Category: %CAT_ARG%)...
-python sync_frozen_daily.py %TARGET_DATE% --category=%CAT_ARG%
+if "%END_DATE%"=="" (
+    python sync_frozen_daily.py %START_DATE% --category=%CAT_ARG%
+) else (
+    python sync_frozen_daily.py %START_DATE% %END_DATE% --category=%CAT_ARG%
+)
 
 echo.
 echo ======================================================================

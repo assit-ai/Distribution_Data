@@ -327,22 +327,24 @@ class PoloxyClient:
 
         return tot
 
-    def fetch_sales_orders(self, cat_conf, date_str):
+    def fetch_sales_orders(self, cat_conf, start_date_str, end_date_str=None):
+        if not end_date_str:
+            end_date_str = start_date_str
         branch_name = cat_conf['name']
         branch_id = cat_conf['branch_id']
         qty_col = cat_conf.get('so_qty_col', 10)
         depots_dict = cat_conf['depots']
         default_depot = cat_conf.get('default_depot')
 
-        print(f"[*] Fetching Sales Orders for {branch_name} ({date_str})...")
+        print(f"[*] Fetching Sales Orders for {branch_name} ({start_date_str} to {end_date_str})...")
         so_url = f"{self.base_url}/COMMON/dt_sale_order_status_report"
         form_data = {
             'branch_name': branch_name,
             'hidden_branch_id': branch_id,
             'customer_name': '',
             'hidd_customer_id': '',
-            'start_date': date_str,
-            'end_date': date_str,
+            'start_date': start_date_str,
+            'end_date': end_date_str,
             'max1': 'null'
         }
         req = urllib.request.Request(
@@ -415,22 +417,29 @@ class PoloxyClient:
             return []
 
 
-def run_category_sync(client, cat_key, cat_conf, target_date_str, target_dt, mtd_start_str, mtd_days, seven_days_ago_dt):
+def run_category_sync(client, cat_key, cat_conf, start_date_str, end_date_str, start_dt, end_dt):
     depots_dict = cat_conf['depots']
     default_depot = cat_conf.get('default_depot')
     qty_field = cat_conf.get('dn_qty_field', 'qty')
     unit = cat_conf.get('unit', 'Qty')
 
+    is_single_day = (start_date_str == end_date_str)
+    num_days = max(1, (end_dt - start_dt).days + 1)
+
     print(f"\n{'='*70}")
     print(f"[*] PROCESSING CATEGORY: {cat_key.upper()} ({cat_conf['name']}) [Unit: {unit}]")
+    if is_single_day:
+        print(f"[*] Report Mode: SINGLE DATE ({start_date_str}) [Exact Date Extraction]")
+    else:
+        print(f"[*] Report Mode: DATE RANGE ({start_date_str} to {end_date_str}) [{num_days} Days]")
     print(f"{'='*70}")
 
-    # 1. Fetch Sales Orders for Target Date
-    orders_map = client.fetch_sales_orders(cat_conf, target_date_str)
+    # 1. Fetch Sales Orders for Exact Date / Range
+    orders_map = client.fetch_sales_orders(cat_conf, start_date_str, end_date_str)
 
-    # 2. Fetch Delivery Notes (MTD Range)
-    delivery_rows = client.fetch_delivery_notes(cat_conf, mtd_start_str, target_date_str)
-    print(f" -> Found {len(delivery_rows):,} delivery transactions in MTD period for {cat_key}.")
+    # 2. Fetch Delivery Notes for Exact Date / Range (Direct ERP query for requested period)
+    delivery_rows = client.fetch_delivery_notes(cat_conf, start_date_str, end_date_str)
+    print(f" -> Found {len(delivery_rows):,} delivery transactions between {start_date_str} and {end_date_str} for {cat_key}.")
 
     # Name mapping
     loc_to_depot = {}
@@ -439,16 +448,8 @@ def run_category_sync(client, cat_key, cat_conf, target_date_str, target_dt, mtd
         for add_g in conf.get('additional_godowns', []):
             loc_to_depot[add_g['name']] = code
 
-    today_delivered_map = {k: 0.0 for k in depots_dict}
-    mtd_delivered_map = {k: 0.0 for k in depots_dict}
-    seven_d_delivered_map = {k: 0.0 for k in depots_dict}
-
-    cur_entry_date = ""
+    delivered_map = {k: 0.0 for k in depots_dict}
     for row in delivery_rows:
-        ed = str(row.get('entryDate', '')).strip()
-        if ed:
-            cur_entry_date = ed
-
         loc = (row.get('location_name') or '').strip()
         depot = loc_to_depot.get(loc)
         if not depot:
@@ -462,31 +463,14 @@ def run_category_sync(client, cat_key, cat_conf, target_date_str, target_dt, mtd
         if qty == 0.0 and qty_field != 'qty':
             qty = clean_num(row.get('qty', 0.0)) # Fallback
 
-        mtd_delivered_map[depot] += qty
+        delivered_map[depot] += qty
 
-        # Today check
-        target_day_month = target_dt.strftime("%d/%m")
-        if cur_entry_date.startswith(target_day_month):
-            today_delivered_map[depot] += qty
-
-        # 7-day window check
-        try:
-            parts = cur_entry_date.split('/')
-            if len(parts) == 3:
-                d_day, d_mon, d_yr = int(parts[0]), int(parts[1]), int(parts[2])
-                if d_yr < 100: d_yr += 2000
-                row_dt = datetime(d_yr, d_mon, d_day)
-                if seven_days_ago_dt <= row_dt <= target_dt:
-                    seven_d_delivered_map[depot] += qty
-        except Exception:
-            pass
-
-    # 3. Fetch Stock for each depot in parallel
-    print(f"[*] Querying Godown Stock for each depot ({cat_conf['item_group']})...")
+    # 3. Fetch Stock as of end_date_str
+    print(f"[*] Querying Godown Stock as of {end_date_str} for each depot ({cat_conf['item_group']})...")
     stock_map = {}
     with concurrent.futures.ThreadPoolExecutor(max_workers=min(6, len(depots_dict))) as executor:
         future_to_code = {
-            executor.submit(client.fetch_depot_stock, code, conf, cat_conf, target_date_str): code
+            executor.submit(client.fetch_depot_stock, code, conf, cat_conf, end_date_str): code
             for code, conf in depots_dict.items()
         }
         for future in concurrent.futures.as_completed(future_to_code):
@@ -501,60 +485,59 @@ def run_category_sync(client, cat_key, cat_conf, target_date_str, target_dt, mtd
 
     # 4. Compute Metrics
     summary_data = []
-    print("\n" + "-" * 96)
-    print(f"{'DEPOT':<12} | {'STOCK (' + unit + ')':<14} | {'ORDERS':<8} | {'DELIVERED':<10} | {'PENDING':<8} | {'MTD AVG':<8} | {'COV(M)':<6} | {'7D AVG':<8} | {'COV(7)':<6}")
-    print("-" * 96)
+    print("\n" + "-" * 88)
+    print(f"{'DEPOT':<12} | {'STOCK (' + unit + ')':<14} | {'ORDERS':<10} | {'DELIVERED':<12} | {'PENDING':<10} | {'AVG DAILY':<10} | {'COVER(D)':<8}")
+    print("-" * 88)
 
     for code in depots_dict:
         stock = round(stock_map.get(code, 0.0), 1 if unit == 'Kg' else 0)
         orders = round(orders_map.get(code, 0.0), 1 if unit == 'Kg' else 0)
-        delivered = round(today_delivered_map.get(code, 0.0), 1 if unit == 'Kg' else 0)
+        delivered = round(delivered_map.get(code, 0.0), 1 if unit == 'Kg' else 0)
         pending = max(0.0, round(orders - delivered, 1 if unit == 'Kg' else 0))
 
-        mtd_tot = mtd_delivered_map.get(code, 0.0)
-        mtd_avg = round(mtd_tot / max(1, mtd_days), 1)
-        mtd_cov = round(stock / mtd_avg, 1) if mtd_avg > 0 else 999.0
+        avg_daily = round(delivered / num_days, 1) if num_days > 0 else delivered
+        cover = round(stock / avg_daily, 1) if avg_daily > 0 else 999.0
 
-        seven_tot = seven_d_delivered_map.get(code, 0.0)
-        seven_avg = round(seven_tot / 7.0, 1)
-        seven_cov = round(stock / seven_avg, 1) if seven_avg > 0 else 999.0
-
-        print(f"{code:<12} | {stock:>14,.1f} | {orders:>8,.1f} | {delivered:>10,.1f} | {pending:>8,.1f} | {mtd_avg:>8.1f} | {mtd_cov:>6.1f} | {seven_avg:>8.1f} | {seven_cov:>6.1f}")
+        print(f"{code:<12} | {stock:>14,.1f} | {orders:>10,.1f} | {delivered:>12,.1f} | {pending:>10,.1f} | {avg_daily:>10.1f} | {cover:>8.1f}")
 
         summary_data.append({
             'depot': code,
             'category': cat_key,
             'unit': unit,
+            'entry_date': end_dt.strftime("%Y-%m-%d"),
             'stock': stock,
             'orders': orders,
             'delivered': delivered,
             'pending': pending,
-            'avg_daily_mtd': mtd_avg,
-            'stock_cover_mtd': mtd_cov,
-            'avg_daily_7d': seven_avg,
-            'stock_cover_7d': seven_cov
+            'avg_daily': avg_daily,
+            'stock_cover': cover
         })
 
-    print("-" * 96)
+    print("-" * 88)
     return summary_data
 
 
-def run_sync_pipeline(target_date_str=None, category_filter='all', export_excel=False):
+def run_sync_pipeline(start_date_str=None, end_date_str=None, category_filter='all', export_excel=False):
     now = datetime.now()
-    if not target_date_str:
-        target_date_str = now.strftime("%d/%m/%Y")
+    if not start_date_str:
+        start_date_str = now.strftime("%d/%m/%Y")
+    if not end_date_str:
+        end_date_str = start_date_str
 
-    target_dt = datetime.strptime(target_date_str, "%d/%m/%Y")
-    date_iso = target_dt.strftime("%Y-%m-%d")
-    mtd_start_str = f"01/{target_dt.strftime('%m/%Y')}"
-    mtd_days = target_dt.day
-    seven_days_ago_dt = target_dt - timedelta(days=6)
+    start_dt = datetime.strptime(start_date_str, "%d/%m/%Y")
+    end_dt = datetime.strptime(end_date_str, "%d/%m/%Y")
+    if start_dt > end_dt:
+        start_dt, end_dt = end_dt, start_dt
+        start_date_str, end_date_str = end_date_str, start_date_str
 
     configs = load_extended_configs()
 
     print("\n" + "=" * 70)
     print(f"[*] PARAGON AGRO - DAILY ERP AUTO SYNC PIPELINE")
-    print(f"[*] Target Date : {target_date_str} (MTD: {mtd_start_str} to {target_date_str})")
+    if start_date_str == end_date_str:
+        print(f"[*] Target Date : {start_date_str} (Single Exact Date)")
+    else:
+        print(f"[*] Date Range  : {start_date_str} to {end_date_str}")
     print(f"[*] Categories  : {category_filter.upper()}")
     print("=" * 70)
 
@@ -576,7 +559,7 @@ def run_sync_pipeline(target_date_str=None, category_filter='all', export_excel=
     all_results = []
     for ckey in cats_to_run:
         if ckey in configs:
-            res = run_category_sync(client, ckey, configs[ckey], target_date_str, target_dt, mtd_start_str, mtd_days, seven_days_ago_dt)
+            res = run_category_sync(client, ckey, configs[ckey], start_date_str, end_date_str, start_dt, end_dt)
             all_results.extend(res)
 
     # Export Master Excel Template (Optional)
@@ -584,7 +567,7 @@ def run_sync_pipeline(target_date_str=None, category_filter='all', export_excel=
         wb = openpyxl.Workbook()
         ws = wb.active
         ws.title = "Master_Daily"
-        ws.append(["Depot", "Category", "Unit", "Orders", "Delivered", "Stock", "Avg_Daily_MTD", "Avg_Daily_7D", "Stock_Cover_MTD", "Stock_Cover_7D"])
+        ws.append(["Depot", "Category", "Unit", "Orders", "Delivered", "Pending", "Stock", "Avg_Daily", "Stock_Cover"])
         for r in all_results:
             ws.append([
                 r['depot'],
@@ -592,13 +575,13 @@ def run_sync_pipeline(target_date_str=None, category_filter='all', export_excel=
                 r.get('unit', 'Qty'),
                 r['orders'],
                 r['delivered'],
+                r['pending'],
                 r['stock'],
-                r['avg_daily_mtd'],
-                r['avg_daily_7d'],
-                r['stock_cover_mtd'],
-                r['stock_cover_7d']
+                r['avg_daily'],
+                r['stock_cover']
             ])
-        out_excel = f"Master_Daily_Combined_{date_iso}.xlsx"
+        date_tag = end_dt.strftime("%Y-%m-%d")
+        out_excel = f"Master_Daily_Combined_{date_tag}.xlsx"
         wb.save(out_excel)
         print(f"\n[OK] Ready Master Excel generated: {out_excel}")
 
@@ -606,14 +589,16 @@ def run_sync_pipeline(target_date_str=None, category_filter='all', export_excel=
 
 # Backward compatibility alias
 def run_frozen_sync(target_date_str=None, export_excel=False):
-    return run_sync_pipeline(target_date_str=target_date_str, category_filter='Frozen', export_excel=export_excel)
+    return run_sync_pipeline(start_date_str=target_date_str, end_date_str=target_date_str, category_filter='Frozen', export_excel=export_excel)
 
 if __name__ == '__main__':
-    target = None
+    start_date = None
+    end_date = None
     json_mode = False
     export_excel = False
     category_filter = 'all'
 
+    pos_args = []
     for arg in sys.argv[1:]:
         if arg == '--json':
             json_mode = True
@@ -621,9 +606,22 @@ if __name__ == '__main__':
             export_excel = True
         elif arg.startswith('--category='):
             category_filter = arg.split('=', 1)[1].strip()
-        elif not target and not arg.startswith('-'):
-            target = arg
+        elif arg.startswith('--start='):
+            start_date = arg.split('=', 1)[1].strip()
+        elif arg.startswith('--end='):
+            end_date = arg.split('=', 1)[1].strip()
+        elif not arg.startswith('-'):
+            pos_args.append(arg)
 
-    res = run_sync_pipeline(target, category_filter=category_filter, export_excel=export_excel)
+    if pos_args:
+        if not start_date:
+            start_date = pos_args[0]
+        if len(pos_args) > 1 and not end_date:
+            end_date = pos_args[1]
+
+    if not end_date:
+        end_date = start_date
+
+    res = run_sync_pipeline(start_date, end_date, category_filter=category_filter, export_excel=export_excel)
     if json_mode:
         print("\n__JSON_START__" + json.dumps(res) + "__JSON_END__")
