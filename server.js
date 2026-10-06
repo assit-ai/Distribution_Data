@@ -94,6 +94,9 @@ async function init() {
       status text not null default 'dispatched', notes text not null default '',
       created_by int references users(id) on delete set null, created_at timestamptz not null default now());
     alter table entries add column if not exists remarks text not null default '';
+    alter table entries add column if not exists pending_orders int not null default 0;
+    alter table entries add column if not exists total_orders_count int not null default 0;
+    alter table entries add column if not exists pending_so_numbers text not null default '';
     create table if not exists registered_vans(
       id serial primary key, depot text not null,
       vehicle_no text not null, driver_name text not null default '',
@@ -336,7 +339,11 @@ app.get('/api/entries', auth, wrap(async (req, res) => {
 
   if (!isRange) {
     query = `select to_char(e.entry_date,'YYYY-MM-DD') date, e.depot, e.category, e.orders::float8 orders, e.delivered::float8 delivered,
-      e.stock::float8 stock, e.avg_daily::float8 avg_daily, coalesce(e.remarks, '') remarks, e.updated_at, u.name "by"
+      e.stock::float8 stock, e.avg_daily::float8 avg_daily,
+      coalesce(e.pending_orders, 0)::int pending_orders,
+      coalesce(e.total_orders_count, 0)::int total_orders_count,
+      coalesce(e.pending_so_numbers, '') pending_so_numbers,
+      coalesce(e.remarks, '') remarks, e.updated_at, u.name "by"
       from entries e left join users u on u.id=e.updated_by where e.entry_date=$1`;
     params = [from];
     if (req.user.role !== 'admin') {
@@ -363,6 +370,9 @@ app.get('/api/entries', auth, wrap(async (req, res) => {
         sum(e.delivered)::float8 as delivered,
         coalesce(ls.stock, 0)::float8 as stock,
         coalesce(ls.avg_daily, 0)::float8 as avg_daily,
+        sum(coalesce(e.pending_orders, 0))::int as pending_orders,
+        sum(coalesce(e.total_orders_count, 0))::int as total_orders_count,
+        coalesce(string_agg(distinct e.pending_so_numbers, ', ') filter (where e.pending_so_numbers <> ''), '') as pending_so_numbers,
         coalesce(string_agg(distinct e.remarks, '; ') filter (where e.remarks <> ''), '') as remarks,
         max(e.updated_at) as updated_at,
         'Range Summary' as "by"
@@ -401,11 +411,14 @@ app.put('/api/entries', auth, wrap(async (req, res) => {
   const finalOrders = cat === 'Chicken' ? orders : Math.round(orders);
   const finalDelivered = cat === 'Chicken' ? delivered : Math.round(delivered);
   const remarks = String(b.remarks || '').trim();
+  const pendingOrders = b.pending_orders != null ? parseInt(b.pending_orders, 10) : (finalOrders > finalDelivered ? 1 : 0);
+  const totalOrdersCount = b.total_orders_count != null ? parseInt(b.total_orders_count, 10) : (finalOrders > 0 ? 1 : 0);
+  const pendingSoNumbers = String(b.pending_so_numbers || '').trim();
 
-  await pool.query(`insert into entries(entry_date,depot,category,orders,delivered,stock,avg_daily,remarks,updated_by,updated_at)
-    values($1,$2,$3,$4,$5,$6,$7,$8,$9,now())
-    on conflict(entry_date,depot,category) do update set orders=$4,delivered=$5,stock=$6,avg_daily=$7,remarks=$8,updated_by=$9,updated_at=now()`,
-    [date, depot, cat, finalOrders, finalDelivered, stock, avg, remarks, req.user.id]);
+  await pool.query(`insert into entries(entry_date,depot,category,orders,delivered,stock,avg_daily,pending_orders,total_orders_count,pending_so_numbers,remarks,updated_by,updated_at)
+    values($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,now())
+    on conflict(entry_date,depot,category) do update set orders=$4,delivered=$5,stock=$6,avg_daily=$7,pending_orders=$8,total_orders_count=$9,pending_so_numbers=$10,remarks=$11,updated_by=$12,updated_at=now()`,
+    [date, depot, cat, finalOrders, finalDelivered, stock, avg, pendingOrders, totalOrdersCount, pendingSoNumbers, remarks, req.user.id]);
   res.json({ ok: true });
 }));
 
@@ -690,19 +703,25 @@ app.post('/api/auto-sync', auth, admin, wrap(async (req, res) => {
         const finalDelivered = cat === 'Chicken' ? delVal : Math.round(delVal);
 
         const remarksVal = String(it.remarks || '').trim();
+        const pendingOrders = parseInt(it.pending_orders, 10) || 0;
+        const totalOrdersCount = parseInt(it.total_orders_count, 10) || 0;
+        const pendingSoNumbers = String(it.pending_so_numbers || '').trim();
 
         await pool.query(`
-          insert into entries(entry_date, depot, category, orders, delivered, stock, avg_daily, remarks, updated_by, updated_at)
-          values($1, $2, $3, $4, $5, $6, $7, $8, $9, now())
+          insert into entries(entry_date, depot, category, orders, delivered, stock, avg_daily, pending_orders, total_orders_count, pending_so_numbers, remarks, updated_by, updated_at)
+          values($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, now())
           on conflict(entry_date, depot, category) do update set
             orders = excluded.orders,
             delivered = excluded.delivered,
             stock = excluded.stock,
             avg_daily = excluded.avg_daily,
+            pending_orders = excluded.pending_orders,
+            total_orders_count = excluded.total_orders_count,
+            pending_so_numbers = excluded.pending_so_numbers,
             remarks = excluded.remarks,
             updated_by = excluded.updated_by,
             updated_at = now()
-        `, [itDate, depot, cat, finalOrders, finalDelivered, stkVal, avgVal, remarksVal, req.user.id]);
+        `, [itDate, depot, cat, finalOrders, finalDelivered, stkVal, avgVal, pendingOrders, totalOrdersCount, pendingSoNumbers, remarksVal, req.user.id]);
         saved++;
       }
 

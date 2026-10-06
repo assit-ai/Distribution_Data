@@ -2237,8 +2237,11 @@ function renderAll() {
   ents.forEach(r => {
     const o = r.orders || 0;
     const v = r.delivered || 0;
-    if (o > v) {
-      pendingOrdersCount++;
+    const pend = Math.max(0, o - v);
+    if (r.pending_orders != null && r.pending_orders > 0) {
+      pendingOrdersCount += r.pending_orders;
+    } else if (pend > 0) {
+      pendingOrdersCount += 1;
     }
   });
 
@@ -3116,14 +3119,19 @@ function renderPendingModal() {
     const o = r.orders || 0;
     const v = r.delivered || 0;
     const pend = Math.max(0, o - v);
-    if (pend > 0) {
-      pendingOrdersCount++;
+    const pSoCnt = (r.pending_orders != null && r.pending_orders > 0) ? r.pending_orders : (pend > 0 ? 1 : 0);
+    const tSoCnt = (r.total_orders_count != null && r.total_orders_count > 0) ? r.total_orders_count : (o > 0 ? 1 : 0);
+    if (pend > 0 || pSoCnt > 0) {
+      pendingOrdersCount += pSoCnt;
       pendingRows.push({
         depot: r.depot,
         category: r.category,
         orders: o,
         delivered: v,
         pending: pend,
+        pending_orders: pSoCnt,
+        total_orders_count: tSoCnt,
+        pending_so_numbers: r.pending_so_numbers || '',
         stock: r.stock || 0,
         remarks: r.remarks,
         unit: getCatUnit(r.category)
@@ -3133,7 +3141,7 @@ function renderPendingModal() {
   });
 
   const countEl = $('modal_pending_orders_count');
-  if (countEl) countEl.textContent = `${pendingOrdersCount} Pending Order${pendingOrdersCount === 1 ? '' : 's'}`;
+  if (countEl) countEl.textContent = `${pendingOrdersCount} Pending Unique Order${pendingOrdersCount === 1 ? '' : 's'}`;
 
   const sumEl = $('modal_pending_summary');
   if (sumEl) sumEl.textContent = `Total Pending Qty: ${fmt(grandPendingQty)}`;
@@ -3150,12 +3158,16 @@ function renderPendingModal() {
     const fulPct = pct(row.delivered, row.orders);
     const pillClass = fulPct >= 90 ? 'cover-ok' : (fulPct >= 60 ? 'cover-pill' : 'cover-bad');
     const reason = row.remarks || `আজকের অর্ডার পেন্ডিং / প্রসেসিং (-${fmt(row.pending)} ${row.unit})`;
+    const soBadge = row.pending_orders > 0
+      ? `<span class="badge" style="background:var(--warn-bg); color:var(--warn); font-weight:700;" title="${esc(row.pending_so_numbers ? ('Pending SOs: ' + row.pending_so_numbers) : '')}">⏳ ${row.pending_orders} SO${row.pending_orders === 1 ? '' : 's'} Pending</span>`
+      : `<span class="badge cover-ok">0 Pending</span>`;
+
     return `<tr>
       <td><b>${esc(row.depot)}</b></td>
       <td>${esc(row.category)} <span class="sub" style="font-size:11px;">(${row.unit})</span></td>
-      <td class="num">${fmt(row.orders)}</td>
+      <td class="num">${fmt(row.orders)} <span class="sub" style="font-size:11px;">(${row.total_orders_count} SOs)</span></td>
       <td class="num" style="color:var(--ok)">${fmt(row.delivered)}</td>
-      <td class="center"><span class="badge" style="background:var(--warn-bg); color:var(--warn); font-weight:700;">⏳ 1 Order Pending</span></td>
+      <td class="center">${soBadge}</td>
       <td class="num" style="font-weight:700; color:var(--warn); font-size:14px;">${fmt(row.pending)} ${row.unit}</td>
       <td class="center"><span class="cover-pill ${pillClass}">${fulPct}%</span></td>
       <td class="num">${fmt(row.stock)}</td>

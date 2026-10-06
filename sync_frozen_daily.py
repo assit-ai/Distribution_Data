@@ -16,6 +16,7 @@ import urllib.parse
 import http.cookiejar
 import time
 from datetime import datetime, timedelta
+from collections import defaultdict
 import concurrent.futures
 import functools
 
@@ -360,6 +361,13 @@ class PoloxyClient:
         html = resp.read().decode('utf-8', errors='ignore')
 
         orders_by_depot = {k: 0.0 for k in depots_dict}
+        total_sos_by_depot = {k: 0 for k in depots_dict}
+        pending_sos_by_depot = {k: 0 for k in depots_dict}
+        pending_so_numbers_by_depot = {k: [] for k in depots_dict}
+
+        # Group rows by unique SO number to accurately count unique sales orders
+        so_grouped = defaultdict(lambda: {'so_qty': 0.0, 'dn_qty': 0.0, 'depot': None, 'ref_no': ''})
+
         trs = re.findall(r'<tr[^>]*>.*?</tr>', html, re.DOTALL | re.IGNORECASE)
         for tr in trs:
             cells = [re.sub(r'<[^>]+>', '', c).strip() for c in re.findall(r'<t[dh][^>]*>(.*?)</t[dh]>', tr, re.DOTALL)]
@@ -379,21 +387,43 @@ class PoloxyClient:
                 if so_dt and (so_dt < start_d or so_dt > end_d):
                     continue
 
+            so_no = cells[3] if len(cells) > 3 else ''
             ref_no = cells[4] if len(cells) > 4 else ''
             item_name = cells[7] if len(cells) > 7 else ''
             qty = clean_num(cells[qty_col]) if len(cells) > qty_col else 0.0
+            dn_qty = clean_num(cells[29]) if len(cells) > 29 else 0.0
 
             # Egg multiplier rule for sales orders: 12 pcs PKT -> multiply by 12
             if is_egg:
                 lower_item = item_name.lower()
                 if '12 pcs' in lower_item or '12-pack' in lower_item or '12pcs' in lower_item or '12 pkt' in lower_item:
                     qty = qty * 12.0
+                    dn_qty = dn_qty * 12.0
 
             depot = match_depot_from_ref(ref_no, depots_dict, default_depot=default_depot)
-            if depot and depot in orders_by_depot:
-                orders_by_depot[depot] += qty
+            
+            # Group by unique Sales Order Number
+            so_key = so_no if so_no else f"{ref_no}_{len(so_grouped)}"
+            so_grouped[so_key]['so_qty'] += qty
+            so_grouped[so_key]['dn_qty'] += dn_qty
+            so_grouped[so_key]['depot'] = depot
+            so_grouped[so_key]['ref_no'] = ref_no
 
-        return orders_by_depot
+        for so_key, so_info in so_grouped.items():
+            d = so_info['depot']
+            if d and d in depots_dict:
+                orders_by_depot[d] += so_info['so_qty']
+                total_sos_by_depot[d] += 1
+                if so_info['so_qty'] > so_info['dn_qty']:
+                    pending_sos_by_depot[d] += 1
+                    pending_so_numbers_by_depot[d].append(so_key)
+
+        return {
+            'orders_by_depot': orders_by_depot,
+            'total_sos_by_depot': total_sos_by_depot,
+            'pending_sos_by_depot': pending_sos_by_depot,
+            'pending_so_numbers_by_depot': pending_so_numbers_by_depot
+        }
 
     def fetch_delivery_notes(self, cat_conf, start_date_str, end_date_str):
         branch_name = cat_conf['name']
@@ -461,7 +491,17 @@ def run_category_sync(client, cat_key, cat_conf, start_date_str, end_date_str, s
     print(f"{'='*70}")
 
     # 1. Fetch Sales Orders for Exact Date / Range
-    orders_map = client.fetch_sales_orders(cat_conf, start_date_str, end_date_str)
+    so_data = client.fetch_sales_orders(cat_conf, start_date_str, end_date_str)
+    if isinstance(so_data, dict) and 'orders_by_depot' in so_data:
+        orders_map = so_data['orders_by_depot']
+        total_sos_map = so_data['total_sos_by_depot']
+        pending_sos_map = so_data['pending_sos_by_depot']
+        pending_so_numbers_map = so_data['pending_so_numbers_by_depot']
+    else:
+        orders_map = so_data
+        total_sos_map = {k: 0 for k in depots_dict}
+        pending_sos_map = {k: 0 for k in depots_dict}
+        pending_so_numbers_map = {k: [] for k in depots_dict}
 
     # 2. Fetch Delivery Notes for Exact Date / Range
     delivery_rows = client.fetch_delivery_notes(cat_conf, start_date_str, end_date_str)
@@ -585,6 +625,10 @@ def run_category_sync(client, cat_key, cat_conf, start_date_str, end_date_str, s
 
         print(f"{code:<12} | {stock:>14,.1f} | {orders:>10,.1f} | {delivered:>12,.1f} | {pending:>10,.1f} | {avg_daily:>10.1f} | {cover:>8.1f}")
 
+        p_so_cnt = pending_sos_map.get(code, 0)
+        t_so_cnt = total_sos_map.get(code, 0)
+        p_so_nums = pending_so_numbers_map.get(code, [])
+
         summary_data.append({
             'depot': code,
             'category': cat_key,
@@ -594,6 +638,9 @@ def run_category_sync(client, cat_key, cat_conf, start_date_str, end_date_str, s
             'orders': orders,
             'delivered': delivered,
             'pending': pending,
+            'pending_orders': p_so_cnt,
+            'total_orders_count': t_so_cnt,
+            'pending_so_numbers': ', '.join(p_so_nums),
             'variance': variance,
             'remarks': reason,
             'avg_daily': avg_daily,
