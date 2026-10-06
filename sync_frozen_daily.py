@@ -335,6 +335,10 @@ class PoloxyClient:
         qty_col = cat_conf.get('so_qty_col', 10)
         depots_dict = cat_conf['depots']
         default_depot = cat_conf.get('default_depot')
+        is_egg = bool(cat_conf.get('egg_mode'))
+
+        start_d = datetime.strptime(start_date_str, "%d/%m/%Y").date()
+        end_d = datetime.strptime(end_date_str, "%d/%m/%Y").date()
 
         print(f"[*] Fetching Sales Orders for {branch_name} ({start_date_str} to {end_date_str})...")
         so_url = f"{self.base_url}/COMMON/dt_sale_order_status_report"
@@ -361,8 +365,29 @@ class PoloxyClient:
             cells = [re.sub(r'<[^>]+>', '', c).strip() for c in re.findall(r'<t[dh][^>]*>(.*?)</t[dh]>', tr, re.DOTALL)]
             if len(cells) < 12 or cells[0] == 'Sr.No.' or 'Internet Explorer' in cells[0]:
                 continue
+
+            # Filter order date to ensure it is strictly within requested start_date and end_date
+            order_date_raw = cells[1] if len(cells) > 1 else ''
+            if order_date_raw:
+                so_dt = None
+                for fmt_cand in ('%d/%m/%Y', '%d/%m/%y', '%Y-%m-%d'):
+                    try:
+                        so_dt = datetime.strptime(order_date_raw, fmt_cand).date()
+                        break
+                    except ValueError:
+                        pass
+                if so_dt and (so_dt < start_d or so_dt > end_d):
+                    continue
+
             ref_no = cells[4] if len(cells) > 4 else ''
+            item_name = cells[7] if len(cells) > 7 else ''
             qty = clean_num(cells[qty_col]) if len(cells) > qty_col else 0.0
+
+            # Egg multiplier rule for sales orders: 12 pcs PKT -> multiply by 12
+            if is_egg:
+                lower_item = item_name.lower()
+                if '12 pcs' in lower_item or '12-pack' in lower_item or '12pcs' in lower_item or '12 pkt' in lower_item:
+                    qty = qty * 12.0
 
             depot = match_depot_from_ref(ref_no, depots_dict, default_depot=default_depot)
             if depot and depot in orders_by_depot:
@@ -383,8 +408,8 @@ class PoloxyClient:
             'fm_sale_branch': branch_id,
             'fm_sale_start_dt': start_date_str,
             'fm_sale_end_dt': end_date_str,
-            'fromm': '01/10/2022',
-            'too': '31/12/2027',
+            'fromm': start_date_str,
+            'too': end_date_str,
             'max1': 'null',
             'fm_sale_dummy': 'null'
         }
@@ -422,6 +447,7 @@ def run_category_sync(client, cat_key, cat_conf, start_date_str, end_date_str, s
     default_depot = cat_conf.get('default_depot')
     qty_field = cat_conf.get('dn_qty_field', 'qty')
     unit = cat_conf.get('unit', 'Qty')
+    is_egg = bool(cat_conf.get('egg_mode'))
 
     is_single_day = (start_date_str == end_date_str)
     num_days = max(1, (end_dt - start_dt).days + 1)
@@ -437,9 +463,9 @@ def run_category_sync(client, cat_key, cat_conf, start_date_str, end_date_str, s
     # 1. Fetch Sales Orders for Exact Date / Range
     orders_map = client.fetch_sales_orders(cat_conf, start_date_str, end_date_str)
 
-    # 2. Fetch Delivery Notes for Exact Date / Range (Direct ERP query for requested period)
+    # 2. Fetch Delivery Notes for Exact Date / Range
     delivery_rows = client.fetch_delivery_notes(cat_conf, start_date_str, end_date_str)
-    print(f" -> Found {len(delivery_rows):,} delivery transactions between {start_date_str} and {end_date_str} for {cat_key}.")
+    print(f" -> Found {len(delivery_rows):,} delivery transactions from ERP response.")
 
     # Name mapping
     loc_to_depot = {}
@@ -449,11 +475,45 @@ def run_category_sync(client, cat_key, cat_conf, start_date_str, end_date_str, s
             loc_to_depot[add_g['name']] = code
 
     delivered_map = {k: 0.0 for k in depots_dict}
+    last_loc = ''
+    last_ref_id = ''
+    last_date = ''
+
     for row in delivery_rows:
         loc = (row.get('location_name') or '').strip()
+        ref_id = (row.get('reference_id') or row.get('custRefNo') or '').strip()
+        entry_date_raw = str(row.get('entryDate') or '').strip()
+
+        # Carry forward location, ref_id, and date if this is a sub-item row on the same challan
+        if loc:
+            last_loc = loc
+        else:
+            loc = last_loc
+
+        if ref_id:
+            last_ref_id = ref_id
+        else:
+            ref_id = last_ref_id
+
+        if entry_date_raw:
+            last_date = entry_date_raw
+        else:
+            entry_date_raw = last_date
+
+        # DATE FILTER: Ensure row's entry date falls between start_dt and end_dt
+        if entry_date_raw:
+            row_dt = None
+            for fmt_candidate in ('%d/%m/%Y', '%d/%m/%y', '%Y-%m-%d'):
+                try:
+                    row_dt = datetime.strptime(entry_date_raw, fmt_candidate)
+                    break
+                except ValueError:
+                    pass
+            if row_dt and (row_dt.date() < start_dt.date() or row_dt.date() > end_dt.date()):
+                continue
+
         depot = loc_to_depot.get(loc)
         if not depot:
-            ref_id = row.get('reference_id', '') or row.get('custRefNo', '') or ''
             depot = match_depot_from_ref(ref_id, depots_dict, default_depot=default_depot)
         if not depot or depot not in depots_dict:
             continue
@@ -462,6 +522,12 @@ def run_category_sync(client, cat_key, cat_conf, start_date_str, end_date_str, s
         qty = clean_num(row.get(qty_field, 0.0))
         if qty == 0.0 and qty_field != 'qty':
             qty = clean_num(row.get('qty', 0.0)) # Fallback
+
+        # Egg multiplier rule for delivery notes: 12 pcs PKT -> multiply by 12
+        if is_egg:
+            item_desc = str(row.get('i_des') or '').lower()
+            if '12 pcs' in item_desc or '12-pack' in item_desc or '12pcs' in item_desc or '12 pkt' in item_desc:
+                qty = qty * 12.0
 
         delivered_map[depot] += qty
 

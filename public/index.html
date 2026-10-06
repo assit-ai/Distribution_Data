@@ -2178,14 +2178,15 @@ function syncDepotEntryForm() {
 // Category Total Aggregate
 function getCategoryTotals() {
   const t = {};
-  CATS.forEach(c => { t[c] = { o: 0, v: 0, s: 0, a: 0, n: 0 }; });
+  CATS.forEach(c => { t[c] = { o: 0, v: 0, s: 0, a: 0, p: 0, n: 0 }; });
   ents.forEach(r => {
-    const x = t[r.category] || (t.Others = t.Others || { o: 0, v: 0, s: 0, a: 0, n: 0 });
+    const x = t[r.category] || (t.Others = t.Others || { o: 0, v: 0, s: 0, a: 0, p: 0, n: 0 });
     x.n++;
-    x.o += r.orders;
-    x.v += r.delivered;
-    x.s += r.stock;
-    x.a += r.avg_daily;
+    x.o += (r.orders || 0);
+    x.v += (r.delivered || 0);
+    x.s += (r.stock || 0);
+    x.a += (r.avg_daily || 0);
+    x.p += Math.max(0, (r.orders || 0) - (r.delivered || 0));
   });
   return t;
 }
@@ -2202,14 +2203,14 @@ function renderAll() {
 
   // 1. KPI Cards
   const catTotals = getCategoryTotals();
-  let totOrders = 0, totDelivered = 0;
+  let totOrders = 0, totDelivered = 0, totPending = 0;
   CATS.forEach(c => {
     if (catTotals[c]) {
       totOrders += catTotals[c].o;
       totDelivered += catTotals[c].v;
+      totPending += catTotals[c].p;
     }
   });
-  const totPending = Math.max(0, totOrders - totDelivered);
   $('kpi-pending').textContent = fmt(totPending);
   $('kpi-orders-tot').textContent = `Orders: ${fmt(totOrders)} | Delivered: ${fmt(totDelivered)}`;
 
@@ -2247,8 +2248,8 @@ function renderAll() {
 
   // 2. Summary Category Table (Interactive Hyperlinks & Drill-downs)
   $('tt').innerHTML = CATS.map(c => {
-    const x = catTotals[c] || { o: 0, v: 0, s: 0, a: 0, n: 0 };
-    const p = Math.max(0, x.o - x.v);
+    const x = catTotals[c] || { o: 0, v: 0, s: 0, a: 0, p: 0, n: 0 };
+    const p = x.p != null ? x.p : Math.max(0, x.o - x.v);
     const cov = x.a > 0 ? (x.s / x.a).toFixed(1) : '–';
     const covClass = x.a > 0 && (x.s / x.a) < 3 ? 'cover-bad' : 'cover-ok';
     const u = getCatUnit(c);
@@ -3630,14 +3631,17 @@ function renderBulkPreview() {
 }
 
 async function processAndCommitBulk() {
-  if (!parsedBulkRows.length) return msg('No parsed rows to save. Please upload a file or paste Excel data first.');
+  if (!parsedBulkRows.length) return msg('No parsed rows to save. Please upload a file, paste Excel data, or run Poloxy Auto Sync first.');
   const d = ($('bulk_target_date') && $('bulk_target_date').value) ? $('bulk_target_date').value : $('date').value;
   if (!d) return msg('Please select a Target Date for Manual Upload');
   const mode = $('bulk-mode').value;
   const statusEl = $('bulk_commit_msg');
 
   const btn = $('btn-commit-bulk');
-  if (btn) btn.disabled = true;
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = '⏳ Saving to database...';
+  }
   if (statusEl) {
     statusEl.innerHTML = `<span style="color:var(--primary); font-weight:600;">⏳ Saving ${parsedBulkRows.length} rows to database...</span>`;
   }
@@ -3660,23 +3664,21 @@ async function processAndCommitBulk() {
     if (statusEl) {
       if (res.updated > 0) {
         statusEl.innerHTML = `
-          <div style="background:rgba(34, 197, 94, 0.15); border:1px solid var(--ok); color:var(--ok); padding:10px 14px; border-radius:6px; font-size:13px; font-weight:600; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
-            <span>✓ Successfully saved ${res.updated} rows to database for ${d}!</span>
-            <button class="s sm" onclick="setTab('dash')" style="font-size:11px; padding:4px 8px;">View in Dashboard →</button>
+          <div style="background:rgba(34, 197, 94, 0.15); border:1.5px solid var(--ok); color:var(--ok); padding:12px 16px; border-radius:8px; font-size:13px; font-weight:600; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-top:8px;">
+            <span>✓ Successfully saved ${res.updated} rows to database for Date: ${d}!</span>
+            <button type="button" class="p sm" onclick="setTab('dash')" style="font-size:12px; padding:7px 14px; font-weight:700; cursor:pointer; background:var(--ac); color:#fff; border:none; border-radius:6px;">📊 View in Dashboard →</button>
           </div>
           ${res.skipped > 0 ? `<div style="color:var(--warn); font-size:12px; margin-top:6px;">⚠️ Note: ${res.skipped} rows skipped (depot or category not recognized: ${esc(res.skippedDetails?.slice(0, 3).join(', '))})</div>` : ''}
         `;
       } else {
         statusEl.innerHTML = `
-          <div style="background:rgba(239, 68, 68, 0.15); border:1px solid var(--bad); color:var(--bad); padding:10px 14px; border-radius:6px; font-size:13px;">
+          <div style="background:rgba(239, 68, 68, 0.15); border:1.5px solid var(--bad); color:var(--bad); padding:12px 16px; border-radius:8px; font-size:13px; font-weight:600;">
             ⚠️ 0 rows saved. ${res.skipped} rows skipped: ${esc(res.skippedDetails?.slice(0, 5).join(', ') || 'unmatched depot or category')}.
           </div>
         `;
       }
     }
     msg(`Bulk Upload: ${res.updated} rows saved ✓`, res.updated > 0);
-    parsedBulkRows = [];
-    $('bulk-paste').value = '';
     renderBulkPreview();
     await loadAll(true);
   } catch (e) {
@@ -3685,7 +3687,10 @@ async function processAndCommitBulk() {
     }
     msg('Bulk upload failed: ' + e.message);
   } finally {
-    if (btn) btn.disabled = parsedBulkRows.length === 0;
+    if (btn) {
+      btn.disabled = parsedBulkRows.length === 0;
+      btn.textContent = 'Save All Parsed Rows to Database';
+    }
   }
 }
 
@@ -3952,7 +3957,10 @@ async function runPoloxyAutoSync() {
   const isSingle = (fromD === toD);
   const dateLabel = isSingle ? fromD : `${fromD} to ${toD}`;
 
-  if (btn) btn.disabled = true;
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = `<span>⏳ Syncing with Poloxy ERP...</span>`;
+  }
   if (logBox) {
     logBox.classList.remove('hid');
     logBox.textContent = `[*] Starting Poloxy ERP Auto Sync for ${dateLabel} (Category: ${cat.toUpperCase()})...\n[*] Extraction Mode: ${isSingle ? 'Single Exact Date (No MTD)' : 'Date Range Exact Extraction'}...\n[*] Connecting to Poloxy ERP (erp.paragon.com.bd)...\n[*] Please wait ~30-50 seconds for parallel depot queries...`;
@@ -3964,9 +3972,40 @@ async function runPoloxyAutoSync() {
 
   try {
     const res = await api('POST', '/api/auto-sync', { from_date: fromD, to_date: toD, category: cat });
-    if (statusEl) {
-      statusEl.innerHTML = `<span style="color:var(--ok); font-weight:700;">✓ Sync Complete! Saved ${res.saved} depot records for ${dateLabel} directly to database.</span>`;
+
+    // Populate parsedBulkRows so that the user immediately sees all the parsed rows!
+    if (res.items && res.items.length) {
+      parsedBulkRows = res.items.map((r, idx) => ({
+        id: idx + 1,
+        depot: r.depot,
+        category: r.category,
+        orders: r.orders != null ? r.orders : null,
+        delivered: r.delivered != null ? r.delivered : null,
+        stock: r.stock != null ? r.stock : null,
+        avg_daily: r.avg_daily != null ? r.avg_daily : null
+      }));
+      renderBulkPreview();
+      if ($('bulk_target_date')) $('bulk_target_date').value = toD;
+      const commitBtn = $('btn-commit-bulk');
+      if (commitBtn) commitBtn.disabled = false;
     }
+
+    const bannerHtml = `
+      <div style="background:rgba(34, 197, 94, 0.15); border:1.5px solid var(--ok); color:var(--ok); padding:12px 16px; border-radius:8px; font-size:13px; font-weight:600; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-top:8px;">
+        <div>
+          <div>✓ Poloxy ERP Sync Complete! Saved ${res.saved} depot records for ${dateLabel} directly to database.</div>
+          <div style="font-size:11px; font-weight:normal; margin-top:3px; color:var(--tx);">
+            Extracted rows are displayed in the preview table below. You can review them or re-save anytime using the "Save All Parsed Rows to Database" button.
+          </div>
+        </div>
+        <button type="button" class="p sm" onclick="setTab('dash')" style="font-size:12px; padding:7px 14px; font-weight:700; cursor:pointer; background:var(--ac); color:#fff; border:none; border-radius:6px;">📊 View in Dashboard →</button>
+      </div>
+    `;
+
+    if (statusEl) statusEl.innerHTML = bannerHtml;
+    const commitMsgEl = $('bulk_commit_msg');
+    if (commitMsgEl) commitMsgEl.innerHTML = bannerHtml;
+
     if (logBox && res.stdout) {
       logBox.textContent = res.stdout;
     }
@@ -3982,7 +4021,10 @@ async function runPoloxyAutoSync() {
     }
     msg('Sync error: ' + err.message);
   } finally {
-    if (btn) btn.disabled = false;
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = `<span>⚡ Start Poloxy Auto Sync</span>`;
+    }
   }
 }
 
