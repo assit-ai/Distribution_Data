@@ -591,8 +591,8 @@ tr:hover td { background: rgba(0,0,0,0.015); }
         <!-- 4. Pending Deliveries (Clickable Hyperlink to Pending Breakdown) -->
         <div class="kpi-card kpi-clickable" onclick="openPendingModal()" title="Click to view pending deliveries breakdown by depot & category">
           <div class="kpi-label">Pending Deliveries 🔍</div>
-          <div class="kpi-val" id="kpi-pending" style="color:var(--warn)">0</div>
-          <div class="kpi-sub" id="kpi-orders-tot">Total Orders: 0</div>
+          <div class="kpi-val" id="kpi-pending" style="color:var(--warn)">0 Orders</div>
+          <div class="kpi-sub" id="kpi-orders-tot">Pending: 0 | Total Orders: 0</div>
           <div class="kpi-link-hint">🔗 View pending breakdown →</div>
         </div>
 
@@ -1376,15 +1376,18 @@ Savar	Egg	42000	7500" oninput="parsePastedTable()"></textarea>
 <!-- MODAL: PENDING DELIVERIES BREAKDOWN (Hyperlink Target) -->
 <!-- ============================================================ -->
 <div id="modal-pending" class="modal-overlay hid" onclick="if(event.target===this)closePendingModal()">
-  <div class="modal-box">
+  <div class="modal-box" style="max-width:980px;">
     <div class="modal-header">
       <div class="modal-title">📦 Pending Deliveries Breakdown (Depot & Category-wise)</div>
       <button class="modal-close" onclick="closePendingModal()">×</button>
     </div>
     <div class="modal-body">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
-        <span class="sub" style="font-size:13px;">View exact pending fulfillment quantities across each depot and product category.</span>
-        <span id="modal_pending_summary" class="cover-pill cover-bad" style="font-size:13px;">Total Pending: 0</span>
+        <span class="sub" style="font-size:13px;">View exact pending sales orders count and pending fulfillment quantities across each depot.</span>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <span id="modal_pending_orders_count" class="cover-pill cover-bad" style="font-size:13px; font-weight:700;">0 Pending Orders</span>
+          <span id="modal_pending_summary" class="cover-pill cover-bad" style="font-size:13px;">Total Pending Qty: 0</span>
+        </div>
       </div>
       <div class="table-wrap">
         <table>
@@ -1394,13 +1397,15 @@ Savar	Egg	42000	7500" oninput="parsePastedTable()"></textarea>
               <th>Category</th>
               <th class="num">Orders Placed</th>
               <th class="num">Delivered</th>
-              <th class="num" style="color:var(--warn)">Pending Qty</th>
+              <th class="center" style="color:var(--warn)">Pending Status</th>
+              <th class="num" style="color:var(--warn)">Pending Qty (Pkt/Kg)</th>
               <th class="center">Fulfillment %</th>
               <th class="num">Current Stock</th>
+              <th>Remarks / Reason</th>
             </tr>
           </thead>
           <tbody id="modal_pending_tb">
-            <tr><td colspan="7" class="center sub" style="padding:16px;">No pending delivery data.</td></tr>
+            <tr><td colspan="9" class="center sub" style="padding:16px;">No pending delivery data.</td></tr>
           </tbody>
         </table>
       </div>
@@ -2226,16 +2231,27 @@ function renderAll() {
 
   // 1. KPI Cards
   const catTotals = getCategoryTotals();
-  let totOrders = 0, totDelivered = 0, totPending = 0;
+  let totOrders = 0, totDelivered = 0, totPendingQty = 0;
+  let pendingOrdersCount = 0;
+
+  ents.forEach(r => {
+    const o = r.orders || 0;
+    const v = r.delivered || 0;
+    if (o > v) {
+      pendingOrdersCount++;
+    }
+  });
+
   CATS.forEach(c => {
     if (catTotals[c]) {
       totOrders += catTotals[c].o;
       totDelivered += catTotals[c].v;
-      totPending += catTotals[c].p;
+      totPendingQty += catTotals[c].p;
     }
   });
-  $('kpi-pending').textContent = fmt(totPending);
-  $('kpi-orders-tot').textContent = `Orders: ${fmt(totOrders)} | Delivered: ${fmt(totDelivered)}`;
+
+  $('kpi-pending').textContent = `${pendingOrdersCount} Order${pendingOrdersCount === 1 ? '' : 's'}`;
+  $('kpi-orders-tot').textContent = `Pending: ${fmt(totPendingQty)} | Orders: ${fmt(totOrders)}`;
 
   // Fleet Totals & On Road Calculation (Total Assigned - Delivered - Under Maintenance)
   let totVans = 0, totDisp = 0, totDone = 0, totMaint = 0;
@@ -3093,29 +3109,37 @@ function renderPendingModal() {
   const tb = $('modal_pending_tb');
   if (!tb) return;
   const pendingRows = [];
-  let grandPending = 0;
+  let grandPendingQty = 0;
+  let pendingOrdersCount = 0;
 
   ents.forEach(r => {
-    const pend = Math.max(0, (r.orders || 0) - (r.delivered || 0));
+    const o = r.orders || 0;
+    const v = r.delivered || 0;
+    const pend = Math.max(0, o - v);
     if (pend > 0) {
+      pendingOrdersCount++;
       pendingRows.push({
         depot: r.depot,
         category: r.category,
-        orders: r.orders,
-        delivered: r.delivered,
+        orders: o,
+        delivered: v,
         pending: pend,
-        stock: r.stock,
+        stock: r.stock || 0,
+        remarks: r.remarks,
         unit: getCatUnit(r.category)
       });
-      grandPending += pend;
+      grandPendingQty += pend;
     }
   });
 
+  const countEl = $('modal_pending_orders_count');
+  if (countEl) countEl.textContent = `${pendingOrdersCount} Pending Order${pendingOrdersCount === 1 ? '' : 's'}`;
+
   const sumEl = $('modal_pending_summary');
-  if (sumEl) sumEl.textContent = `Total Pending Deliveries: ${fmt(grandPending)}`;
+  if (sumEl) sumEl.textContent = `Total Pending Qty: ${fmt(grandPendingQty)}`;
 
   if (!pendingRows.length) {
-    tb.innerHTML = '<tr><td colspan="7" class="center ok" style="padding:20px; font-weight:700;">🎉 Excellent! All orders delivered across all depots. No pending deliveries!</td></tr>';
+    tb.innerHTML = '<tr><td colspan="9" class="center ok" style="padding:20px; font-weight:700;">🎉 Excellent! All orders delivered across all depots. No pending deliveries!</td></tr>';
     return;
   }
 
@@ -3125,14 +3149,17 @@ function renderPendingModal() {
   tb.innerHTML = pendingRows.map(row => {
     const fulPct = pct(row.delivered, row.orders);
     const pillClass = fulPct >= 90 ? 'cover-ok' : (fulPct >= 60 ? 'cover-pill' : 'cover-bad');
+    const reason = row.remarks || `আজকের অর্ডার পেন্ডিং / প্রসেসিং (-${fmt(row.pending)} ${row.unit})`;
     return `<tr>
       <td><b>${esc(row.depot)}</b></td>
       <td>${esc(row.category)} <span class="sub" style="font-size:11px;">(${row.unit})</span></td>
       <td class="num">${fmt(row.orders)}</td>
       <td class="num" style="color:var(--ok)">${fmt(row.delivered)}</td>
-      <td class="num" style="font-weight:700; color:var(--warn); font-size:14px;">${fmt(row.pending)}</td>
+      <td class="center"><span class="badge" style="background:var(--warn-bg); color:var(--warn); font-weight:700;">⏳ 1 Order Pending</span></td>
+      <td class="num" style="font-weight:700; color:var(--warn); font-size:14px;">${fmt(row.pending)} ${row.unit}</td>
       <td class="center"><span class="cover-pill ${pillClass}">${fulPct}%</span></td>
       <td class="num">${fmt(row.stock)}</td>
+      <td style="font-size:12px; max-width:260px;"><b>${esc(reason)}</b></td>
     </tr>`;
   }).join('');
 }
