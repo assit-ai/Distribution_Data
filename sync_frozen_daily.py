@@ -328,9 +328,11 @@ class PoloxyClient:
 
         return tot
 
-    def fetch_sales_orders(self, cat_conf, start_date_str, end_date_str=None):
+    def fetch_sales_orders(self, cat_conf, start_date_str, end_date_str=None, dn_order_nos=None):
         if not end_date_str:
             end_date_str = start_date_str
+        if dn_order_nos is None:
+            dn_order_nos = set()
         branch_name = cat_conf['name']
         branch_id = cat_conf['branch_id']
         qty_col = cat_conf.get('so_qty_col', 10)
@@ -366,7 +368,7 @@ class PoloxyClient:
         pending_so_numbers_by_depot = {k: [] for k in depots_dict}
 
         # Group rows by unique SO number to accurately count unique sales orders
-        so_grouped = defaultdict(lambda: {'so_qty': 0.0, 'dn_qty': 0.0, 'depot': None, 'ref_no': ''})
+        so_grouped = defaultdict(lambda: {'so_qty': 0.0, 'dn_nos': set(), 'dn_qty': 0.0, 'depot': None, 'ref_no': ''})
 
         trs = re.findall(r'<tr[^>]*>.*?</tr>', html, re.DOTALL | re.IGNORECASE)
         for tr in trs:
@@ -391,6 +393,7 @@ class PoloxyClient:
             ref_no = cells[4] if len(cells) > 4 else ''
             item_name = cells[7] if len(cells) > 7 else ''
             qty = clean_num(cells[qty_col]) if len(cells) > qty_col else 0.0
+            dn_no = cells[27] if len(cells) > 27 else ''
             dn_qty = clean_num(cells[29]) if len(cells) > 29 else 0.0
 
             # Egg multiplier rule for sales orders: 12 pcs PKT -> multiply by 12
@@ -406,6 +409,8 @@ class PoloxyClient:
             so_key = so_no if so_no else f"{ref_no}_{len(so_grouped)}"
             so_grouped[so_key]['so_qty'] += qty
             so_grouped[so_key]['dn_qty'] += dn_qty
+            if dn_no:
+                so_grouped[so_key]['dn_nos'].add(dn_no)
             so_grouped[so_key]['depot'] = depot
             so_grouped[so_key]['ref_no'] = ref_no
 
@@ -414,7 +419,9 @@ class PoloxyClient:
             if d and d in depots_dict:
                 orders_by_depot[d] += so_info['so_qty']
                 total_sos_by_depot[d] += 1
-                if so_info['so_qty'] > so_info['dn_qty']:
+                # Check if this SO has a delivery note / challan issued
+                has_dn = bool(so_info['dn_nos']) or (so_key in dn_order_nos)
+                if not has_dn:
                     pending_sos_by_depot[d] += 1
                     pending_so_numbers_by_depot[d].append(so_key)
 
@@ -490,8 +497,19 @@ def run_category_sync(client, cat_key, cat_conf, start_date_str, end_date_str, s
         print(f"[*] Report Mode: DATE RANGE ({start_date_str} to {end_date_str}) [{num_days} Days]")
     print(f"{'='*70}")
 
-    # 1. Fetch Sales Orders for Exact Date / Range
-    so_data = client.fetch_sales_orders(cat_conf, start_date_str, end_date_str)
+    # 1. Fetch Delivery Notes for Exact Date / Range FIRST so we can match Challans
+    delivery_rows = client.fetch_delivery_notes(cat_conf, start_date_str, end_date_str)
+    print(f" -> Found {len(delivery_rows):,} delivery transactions from ERP response.")
+
+    dn_order_nos = set()
+    for r in delivery_rows:
+        ord_no = (r.get('order_no') or '').strip()
+        ref_id = (r.get('reference_id') or r.get('tracking_no') or '').strip()
+        if ord_no and ref_id:
+            dn_order_nos.add(ord_no)
+
+    # 2. Fetch Sales Orders for Exact Date / Range and cross-reference with DN numbers
+    so_data = client.fetch_sales_orders(cat_conf, start_date_str, end_date_str, dn_order_nos=dn_order_nos)
     if isinstance(so_data, dict) and 'orders_by_depot' in so_data:
         orders_map = so_data['orders_by_depot']
         total_sos_map = so_data['total_sos_by_depot']
@@ -502,10 +520,6 @@ def run_category_sync(client, cat_key, cat_conf, start_date_str, end_date_str, s
         total_sos_map = {k: 0 for k in depots_dict}
         pending_sos_map = {k: 0 for k in depots_dict}
         pending_so_numbers_map = {k: [] for k in depots_dict}
-
-    # 2. Fetch Delivery Notes for Exact Date / Range
-    delivery_rows = client.fetch_delivery_notes(cat_conf, start_date_str, end_date_str)
-    print(f" -> Found {len(delivery_rows):,} delivery transactions from ERP response.")
 
     # Name mapping
     loc_to_depot = {}

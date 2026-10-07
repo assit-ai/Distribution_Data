@@ -3158,9 +3158,16 @@ function renderPendingModal() {
     const fulPct = pct(row.delivered, row.orders);
     const pillClass = fulPct >= 90 ? 'cover-ok' : (fulPct >= 60 ? 'cover-pill' : 'cover-bad');
     const reason = row.remarks || `আজকের অর্ডার পেন্ডিং / প্রসেসিং (-${fmt(row.pending)} ${row.unit})`;
-    const soBadge = row.pending_orders > 0
-      ? `<span class="badge" style="background:var(--warn-bg); color:var(--warn); font-weight:700;" title="${esc(row.pending_so_numbers ? ('Pending SOs: ' + row.pending_so_numbers) : '')}">⏳ ${row.pending_orders} SO${row.pending_orders === 1 ? '' : 's'} Pending</span>`
-      : `<span class="badge cover-ok">0 Pending</span>`;
+    let soBadge = '<span class="badge cover-ok">0 Pending</span>';
+    if (row.pending_orders > 0) {
+      let soPreview = '';
+      if (row.pending_so_numbers) {
+        const soList = row.pending_so_numbers.split(',').map(s => s.trim()).filter(Boolean);
+        const previewTxt = soList.slice(0, 3).join(', ') + (soList.length > 3 ? ` (+${soList.length - 3} more)` : '');
+        soPreview = `<div class="sub" style="font-size:10.5px; margin-top:3px; max-width:200px; line-height:1.2; word-break:break-all;" title="${esc(row.pending_so_numbers)}">📄 ${esc(previewTxt)}</div>`;
+      }
+      soBadge = `<span class="badge" style="background:var(--warn-bg); color:var(--warn); font-weight:700;" title="${esc(row.pending_so_numbers ? ('Pending SOs: ' + row.pending_so_numbers) : '')}">⏳ ${row.pending_orders} SO${row.pending_orders === 1 ? '' : 's'} Pending</span>${soPreview}`;
+    }
 
     return `<tr>
       <td><b>${esc(row.depot)}</b></td>
