@@ -746,7 +746,10 @@ tr:hover td { background: rgba(0,0,0,0.015); }
           <button class="p sm" onclick="saveDepotVehicles()">Save Fleet Summary</button>
         </div>
         <div class="g">
-          <div><label>Selected Depot</label><input id="v_depot_name" readonly style="font-weight:700"></div>
+          <div>
+            <label>Selected Depot (ডিপো ড্রপ-ডাউন)</label>
+            <select id="v_depot_select" onchange="onFleetDepotChange(this.value)" style="font-weight:700;"></select>
+          </div>
           <div><label>Total Vans Assigned</label><input id="v_total" type="number" min="0" value="0"></div>
           <div><label>Vans Dispatched</label><input id="v_disp" type="number" min="0" value="0"></div>
           <div><label>Delivery Completed</label><input id="v_done" type="number" min="0" value="0"></div>
@@ -2179,6 +2182,14 @@ function populateDepotDropdown() {
   sel.innerHTML = a.map(d => `<option value="${esc(d)}">${esc(d)}</option>`).join('');
   if (a.includes(prev)) sel.value = prev;
 
+  const vSel = $('v_depot_select');
+  if (vSel) {
+    const vPrev = vSel.value;
+    vSel.innerHTML = a.map(d => `<option value="${esc(d)}">${esc(d)}</option>`).join('');
+    if (a.includes(vPrev)) vSel.value = vPrev;
+    else if (sel.value) vSel.value = sel.value;
+  }
+
   const nod = $('nod');
   const ef = $('ef');
   if (!a.length) {
@@ -2192,9 +2203,16 @@ function populateDepotDropdown() {
   syncDepotEntryForm();
 }
 
-function syncDepotEntryForm() {
-  const curDep = $('dep').value;
-  $('v_depot_name').value = curDep || '–';
+function onFleetDepotChange(newDep) {
+  if ($('dep')) $('dep').value = newDep;
+  syncDepotEntryForm(newDep);
+}
+
+function syncDepotEntryForm(chosenDep) {
+  const curDep = chosenDep || ($('dep') ? $('dep').value : '') || ($('v_depot_select') ? $('v_depot_select').value : '');
+  if ($('dep') && $('dep').value !== curDep && allowed().includes(curDep)) $('dep').value = curDep;
+  if ($('v_depot_select') && $('v_depot_select').value !== curDep && allowed().includes(curDep)) $('v_depot_select').value = curDep;
+  if ($('v_depot_name')) $('v_depot_name').value = curDep || '–';
 
   // Count registered vans for this depot
   const depotRegisteredCount = (registeredVans || []).filter(v => depotMatches(v.depot, curDep)).length;
@@ -2232,7 +2250,7 @@ function getCategoryTotals() {
     x.a += (r.avg_daily || 0);
     x.p += Math.max(0, (r.orders || 0) - (r.delivered || 0));
     x.so_count += (r.total_orders_count != null && r.total_orders_count > 0 ? r.total_orders_count : (r.orders > 0 ? 1 : 0));
-    x.pending_sos += (r.pending_orders != null && r.pending_orders > 0 ? r.pending_orders : ((r.orders || 0) > (r.delivered || 0) ? 1 : 0));
+    x.pending_sos += (r.pending_orders != null ? r.pending_orders : ((r.orders || 0) > (r.delivered || 0) ? 1 : 0));
   });
   return t;
 }
@@ -2256,7 +2274,7 @@ function renderAll() {
     const o = r.orders || 0;
     const v = r.delivered || 0;
     const pend = Math.max(0, o - v);
-    if (r.pending_orders != null && r.pending_orders > 0) {
+    if (r.pending_orders != null) {
       pendingOrdersCount += r.pending_orders;
     } else if (pend > 0) {
       pendingOrdersCount += 1;
@@ -2318,10 +2336,13 @@ function renderAll() {
     let varBadge = '';
     if (x.pending_sos > 0) {
       const diff = Math.max(0, o - v);
-      varBadge = `<span class="badge" style="background:var(--warn-bg); color:var(--warn); font-weight:700;" title="পেন্ডিং: ${x.pending_sos} টি সেলস অর্ডার (${fmt(diff)} ${u})">⏳ ${x.pending_sos} SOs (${fmt(diff)} ${u})</span>`;
+      varBadge = `<span class="badge" style="background:var(--warn-bg); color:var(--warn); font-weight:700;" title="চালান অনিষ্পন্ন: ${x.pending_sos} টি সেলস অর্ডার (${fmt(diff)} ${u})">⏳ ${x.pending_sos} SOs অনিষ্পন্ন (${fmt(diff)} ${u})</span>`;
     } else if (v > o) {
       const diff = v - o;
       varBadge = `<span class="badge" style="background:var(--ok-bg); color:var(--ok); font-weight:700;" title="ডেলিভারি বেশি (+${fmt(diff)} ${u}): পূর্ববর্তী ব্যাকলগ ও বাল্ক চালান সরবরাহ">+${fmt(diff)} (ডেলিভারি বেশি)</span>`;
+    } else if (o > v) {
+      const diff = o - v;
+      varBadge = `<span class="badge" style="background:rgba(234, 179, 8, 0.15); color:var(--warn); font-weight:700;" title="আজকের বুকিং কালকের ডেলিভারি শিডিউলের অন্তর্ভুক্ত (-${fmt(diff)} ${u})">⏳ কালকের শিডিউল (-${fmt(diff)})</span>`;
     } else if (o > 0) {
       varBadge = `<span class="badge" style="background:var(--primary-bg); color:var(--primary);">0 (সমন্বিত ✓)</span>`;
     } else {
@@ -2375,9 +2396,9 @@ function renderAll() {
 
     if (r.pending_orders > 0) {
       const diff = Math.max(0, o - v);
-      varBadge = `<span class="badge" style="background:var(--warn-bg); color:var(--warn); font-weight:700;" title="পেন্ডিং: ${r.pending_orders} টি সেলস অর্ডার (${fmt(diff)} ${u})">⏳ ${r.pending_orders} SOs (-${fmt(diff)})</span>`;
+      varBadge = `<span class="badge" style="background:var(--warn-bg); color:var(--warn); font-weight:700;" title="চালান অনিষ্পন্ন: ${r.pending_orders} টি সেলস অর্ডার (${fmt(diff)} ${u})">⏳ ${r.pending_orders} SOs (-${fmt(diff)})</span>`;
       if (!autoReason) {
-        autoReason = `আজকের অর্ডার পেন্ডিং / প্রসেসিং (-${fmt(diff)} ${u})`;
+        autoReason = `পূর্ববর্তী শিডিউলের চালান অনিষ্পন্ন / ইন-ট্রানজিট (-${fmt(diff)} ${u})`;
       }
     } else if (v > o) {
       const diff = v - o;
@@ -2389,9 +2410,9 @@ function renderAll() {
       }
     } else if (o > v) {
       const diff = o - v;
-      varBadge = `<span class="badge" style="background:var(--warn-bg); color:var(--warn); font-weight:700;">-${fmt(diff)}</span>`;
+      varBadge = `<span class="badge" style="background:rgba(234, 179, 8, 0.15); color:var(--warn); font-weight:700;" title="আজকের বুকিং কালকের ডেলিভারি শিডিউলের অন্তর্ভুক্ত (-${fmt(diff)} ${u})">⏳ কালকের শিডিউল (-${fmt(diff)})</span>`;
       if (!autoReason) {
-        autoReason = `আজকের অর্ডার পেন্ডিং / প্রসেসিং (-${fmt(diff)} ${u})`;
+        autoReason = `কালকের ডেলিভারি শিডিউলভুক্ত / প্রসেসিং (-${fmt(diff)} ${u})`;
       }
     } else if (o > 0) {
       varBadge = `<span class="sub" style="color:var(--ok); font-weight:600;">0 ✓</span>`;
@@ -2505,13 +2526,13 @@ function renderVarianceInsights() {
             <span style="font-size:14px; font-weight:700; color:var(--tx);">
               ⏳ <b>${esc(c)}</b> (${u}): সেলস অর্ডার <span style="color:var(--warn);">${fmt(o)}</span> বনাম ডেলিভারি <span>${fmt(v)}</span>
             </span>
-            <span class="badge" style="background:var(--warn-bg); color:var(--warn); font-size:12px; font-weight:700;">
-              পেন্ডিং ডেলিভারি (-${fmt(diff)} ${u})
+            <span class="badge" style="background:rgba(234, 179, 8, 0.15); color:var(--warn); font-size:12px; font-weight:700;">
+              ⏳ ইন-প্রসেসিং / পরবর্তী দিনের ডেলিভারি শিডিউল (-${fmt(diff)} ${u})
             </span>
           </div>
           <div style="font-size:12.5px; color:var(--tx); line-height:1.4;">
-            <b>💡 স্ট্যাটাস:</b> আজকের বুকিংকৃত অর্ডারের সম্পূর্ণ চালান এখনো প্রস্তুত/সরবরাহ হয়নি, যা বর্তমানে প্রসেসিং বা ইন-ট্রানজিটে রয়েছে।
-            ${pendingDepots.length ? `<br><span style="font-size:11.5px; color:var(--mut);">পেন্ডিং থাকা ডিপোসমূহ: <b>${esc(pendingDepots.join(', '))}</b></span>` : ''}
+            <b>💡 স্ট্যাটাস ও সাপ্লাই চেইন ব্যাখ্যা:</b> এই বুকিংকৃত অর্ডারগুলোকে <b>আজকের পেন্ডিং ডেলিভারি হিসেবে দেখানো যাবে না</b>; কারণ সাপ্লাই চেইন সাইকেল অনুযায়ী আজকের নতুন সেলস অর্ডারের ডেলিভারি নোট/চালান <b>আগামীকালের ডেলিভারি শিডিউলের জন্য প্রস্তুত হবে</b>। (বর্তমানে প্রসেসিং ও শিডিউলিং পর্যায়ে রয়েছে)
+            ${pendingDepots.length ? `<br><span style="font-size:11.5px; color:var(--mut);">পরবর্তী দিনের শিডিউলভুক্ত/চলমান ডিপোসমূহ: <b>${esc(pendingDepots.join(', '))}</b></span>` : ''}
           </div>
         </div>
       `);
@@ -2589,7 +2610,7 @@ async function delEntry(idx) {
 async function saveDepotVehicles() {
   try {
     const d = $('date').value;
-    const dep = $('v_depot_name').value;
+    const dep = ($('v_depot_select') && $('v_depot_select').value) ? $('v_depot_select').value : ($('dep') ? $('dep').value : '');
     if (!dep || dep === '–') throw new Error('Please select a depot');
 
     const tot = num($('v_total').value);
@@ -2615,8 +2636,9 @@ async function saveDepotVehicles() {
 }
 
 function quickEditFleet(depName) {
-  $('dep').value = depName;
-  syncDepotEntryForm();
+  if ($('dep')) $('dep').value = depName;
+  if ($('v_depot_select')) $('v_depot_select').value = depName;
+  syncDepotEntryForm(depName);
   setTab('entry');
   window.scrollTo({ top: 400, behavior: 'smooth' });
 }
@@ -2701,7 +2723,7 @@ function genReport() {
     if (v > o) {
       L.push(`- ${c}: Orders ${fmt(o)} ${u} | Delivered ${fmt(v)} ${u} (Over-Delivered +${fmt(v - o)} ${u} via backlog / factory supply)`);
     } else if (o > v) {
-      L.push(`- ${c}: Orders ${fmt(o)} ${u} | Delivered ${fmt(v)} ${u} | Pending ${fmt(o - v)} ${u}`);
+      L.push(`- ${c}: Orders ${fmt(o)} ${u} | Delivered ${fmt(v)} ${u} | Next Day Schedule / In-Transit ${fmt(o - v)} ${u}`);
     } else {
       L.push(`- ${c}: Orders ${fmt(o)} ${u} | Delivered ${fmt(v)} ${u} (100% Fulfilled ✓)`);
     }
@@ -3143,9 +3165,9 @@ function renderPendingModal() {
     const o = r.orders || 0;
     const v = r.delivered || 0;
     const pend = Math.max(0, o - v);
-    const pSoCnt = (r.pending_orders != null && r.pending_orders > 0) ? r.pending_orders : (pend > 0 ? 1 : 0);
+    const pSoCnt = (r.pending_orders != null ? r.pending_orders : (pend > 0 ? 1 : 0));
     const tSoCnt = (r.total_orders_count != null && r.total_orders_count > 0) ? r.total_orders_count : (o > 0 ? 1 : 0);
-    if (pend > 0 || pSoCnt > 0) {
+    if (pSoCnt > 0 || (r.pending_orders == null && pend > 0)) {
       pendingOrdersCount += pSoCnt;
       pendingRows.push({
         depot: r.depot,
@@ -3171,7 +3193,7 @@ function renderPendingModal() {
   if (sumEl) sumEl.textContent = `Total Pending Qty: ${fmt(grandPendingQty)}`;
 
   if (!pendingRows.length) {
-    tb.innerHTML = '<tr><td colspan="9" class="center ok" style="padding:20px; font-weight:700;">🎉 Excellent! All orders delivered across all depots. No pending deliveries!</td></tr>';
+    tb.innerHTML = '<tr><td colspan="9" class="center ok" style="padding:20px; font-weight:700;">🎉 Excellent! All scheduled orders have delivery notes issued. No pending orders!</td></tr>';
     return;
   }
 
@@ -3181,7 +3203,7 @@ function renderPendingModal() {
   tb.innerHTML = pendingRows.map(row => {
     const fulPct = pct(row.delivered, row.orders);
     const pillClass = fulPct >= 90 ? 'cover-ok' : (fulPct >= 60 ? 'cover-pill' : 'cover-bad');
-    const reason = row.remarks || `আজকের অর্ডার পেন্ডিং / প্রসেসিং (-${fmt(row.pending)} ${row.unit})`;
+    const reason = row.remarks || (row.pending_orders > 0 ? `পূর্ববর্তী শিডিউলের চালান অনিষ্পন্ন / ইন-ট্রানজিট (-${fmt(row.pending)} ${row.unit})` : `পরবর্তী দিনের ডেলিভারি শিডিউলভুক্ত / প্রসেসিং (-${fmt(row.pending)} ${row.unit})`);
     let soBadge = '<span class="badge cover-ok">0 Pending</span>';
     if (row.pending_orders > 0) {
       let soPreview = '';
@@ -3346,9 +3368,9 @@ function renderCategoryModal(catName, sortCol = 'all') {
 
     if (r.pending_orders > 0) {
       const diff = Math.max(0, o - v);
-      varPill = `<span class="badge" style="background:var(--warn-bg); color:var(--warn); font-weight:700;" title="পেন্ডিং: ${r.pending_orders} টি সেলস অর্ডার (${fmt(diff)} ${u})">⏳ ${r.pending_orders} SOs (-${fmt(diff)})</span>`;
+      varPill = `<span class="badge" style="background:var(--warn-bg); color:var(--warn); font-weight:700;" title="চালান অনিষ্পন্ন: ${r.pending_orders} টি সেলস অর্ডার (${fmt(diff)} ${u})">⏳ ${r.pending_orders} SOs (-${fmt(diff)})</span>`;
       if (!autoReason) {
-        autoReason = `আজকের অর্ডার পেন্ডিং / প্রসেসিং (-${fmt(diff)} ${u})`;
+        autoReason = `পূর্ববর্তী শিডিউলের চালান অনিষ্পন্ন / ইন-ট্রানজিট (-${fmt(diff)} ${u})`;
       }
     } else if (v > o) {
       const diff = v - o;
@@ -3360,9 +3382,9 @@ function renderCategoryModal(catName, sortCol = 'all') {
       }
     } else if (o > v) {
       const diff = o - v;
-      varPill = `<span class="badge" style="background:var(--warn-bg); color:var(--warn); font-weight:700;">-${fmt(diff)}</span>`;
+      varPill = `<span class="badge" style="background:rgba(234, 179, 8, 0.15); color:var(--warn); font-weight:700;" title="আজকের বুকিং কালকের ডেলিভারি শিডিউলের অন্তর্ভুক্ত (-${fmt(diff)} ${u})">⏳ কালকের শিডিউল (-${fmt(diff)})</span>`;
       if (!autoReason) {
-        autoReason = `আজকের অর্ডার পেন্ডিং (-${fmt(diff)} ${u})`;
+        autoReason = `কালকের ডেলিভারি শিডিউলভুক্ত / প্রসেসিং (-${fmt(diff)} ${u})`;
       }
     } else if (o > 0) {
       varPill = `<span class="sub" style="color:var(--ok); font-weight:600;">0 ✓</span>`;
