@@ -247,6 +247,22 @@ body {
   background: var(--bd);
   color: var(--tx);
 }
+.modal-actions { display: flex; align-items: center; gap: 6px; }
+.modal-print {
+  background: var(--primary, #023D7F);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 5px 12px;
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  transition: transform .12s ease, opacity .12s ease;
+}
+.modal-print:hover { opacity: .9; transform: translateY(-1px); }
 .modal-body {
   padding: 16px 18px;
   overflow-y: auto;
@@ -2206,15 +2222,17 @@ function syncDepotEntryForm() {
 // Category Total Aggregate
 function getCategoryTotals() {
   const t = {};
-  CATS.forEach(c => { t[c] = { o: 0, v: 0, s: 0, a: 0, p: 0, n: 0 }; });
+  CATS.forEach(c => { t[c] = { o: 0, v: 0, s: 0, a: 0, p: 0, n: 0, so_count: 0, pending_sos: 0 }; });
   ents.forEach(r => {
-    const x = t[r.category] || (t.Others = t.Others || { o: 0, v: 0, s: 0, a: 0, p: 0, n: 0 });
+    const x = t[r.category] || (t.Others = t.Others || { o: 0, v: 0, s: 0, a: 0, p: 0, n: 0, so_count: 0, pending_sos: 0 });
     x.n++;
     x.o += (r.orders || 0);
     x.v += (r.delivered || 0);
     x.s += (r.stock || 0);
     x.a += (r.avg_daily || 0);
     x.p += Math.max(0, (r.orders || 0) - (r.delivered || 0));
+    x.so_count += (r.total_orders_count != null && r.total_orders_count > 0 ? r.total_orders_count : (r.orders > 0 ? 1 : 0));
+    x.pending_sos += (r.pending_orders != null && r.pending_orders > 0 ? r.pending_orders : ((r.orders || 0) > (r.delivered || 0) ? 1 : 0));
   });
   return t;
 }
@@ -2290,7 +2308,7 @@ function renderAll() {
 
   // 2. Summary Category Table (Interactive Hyperlinks & Drill-downs)
   $('tt').innerHTML = CATS.map(c => {
-    const x = catTotals[c] || { o: 0, v: 0, s: 0, a: 0, p: 0, n: 0 };
+    const x = catTotals[c] || { o: 0, v: 0, s: 0, a: 0, p: 0, n: 0, so_count: 0, pending_sos: 0 };
     const o = x.o || 0;
     const v = x.v || 0;
     const cov = x.a > 0 ? (x.s / x.a).toFixed(1) : '–';
@@ -2298,12 +2316,12 @@ function renderAll() {
     const u = getCatUnit(c);
 
     let varBadge = '';
-    if (v > o) {
+    if (x.pending_sos > 0) {
+      const diff = Math.max(0, o - v);
+      varBadge = `<span class="badge" style="background:var(--warn-bg); color:var(--warn); font-weight:700;" title="পেন্ডিং: ${x.pending_sos} টি সেলস অর্ডার (${fmt(diff)} ${u})">⏳ ${x.pending_sos} SOs (${fmt(diff)} ${u})</span>`;
+    } else if (v > o) {
       const diff = v - o;
       varBadge = `<span class="badge" style="background:var(--ok-bg); color:var(--ok); font-weight:700;" title="ডেলিভারি বেশি (+${fmt(diff)} ${u}): পূর্ববর্তী ব্যাকলগ ও বাল্ক চালান সরবরাহ">+${fmt(diff)} (ডেলিভারি বেশি)</span>`;
-    } else if (o > v) {
-      const diff = o - v;
-      varBadge = `<span class="badge" style="background:var(--warn-bg); color:var(--warn); font-weight:700;" title="পেন্ডিং (-${fmt(diff)} ${u}): আজকের বুকিং এখনো সরবরাহ বাকি">-${fmt(diff)} (পেন্ডিং)</span>`;
     } else if (o > 0) {
       varBadge = `<span class="badge" style="background:var(--primary-bg); color:var(--primary);">0 (সমন্বিত ✓)</span>`;
     } else {
@@ -2317,7 +2335,7 @@ function renderAll() {
         </span>
       </td>
       <td class="num cell-clickable" onclick="openCategoryModal('${esc(c)}', 'orders')" title="Click to view ${esc(c)} Orders by depot">
-        ${fmt(o)}
+        ${fmt(o)} ${x.so_count > 0 ? `<span class="sub" style="font-size:11px;">(${x.so_count} SOs)</span>` : ''}
       </td>
       <td class="num cell-clickable" onclick="openCategoryModal('${esc(c)}', 'delivered')" title="Click to view ${esc(c)} Delivered by depot">
         ${fmt(v)}
@@ -2355,7 +2373,13 @@ function renderAll() {
     const depNameLower = String(r.depot || '').toLowerCase();
     const isFactory = depNameLower.includes('factory') || depNameLower.includes('ashulia') || depNameLower.includes('gazipur');
 
-    if (v > o) {
+    if (r.pending_orders > 0) {
+      const diff = Math.max(0, o - v);
+      varBadge = `<span class="badge" style="background:var(--warn-bg); color:var(--warn); font-weight:700;" title="পেন্ডিং: ${r.pending_orders} টি সেলস অর্ডার (${fmt(diff)} ${u})">⏳ ${r.pending_orders} SOs (-${fmt(diff)})</span>`;
+      if (!autoReason) {
+        autoReason = `আজকের অর্ডার পেন্ডিং / প্রসেসিং (-${fmt(diff)} ${u})`;
+      }
+    } else if (v > o) {
       const diff = v - o;
       varBadge = `<span class="badge" style="background:var(--ok-bg); color:var(--ok); font-weight:700;">+${fmt(diff)}</span>`;
       if (!autoReason) {
@@ -2380,7 +2404,7 @@ function renderAll() {
     return `<tr>
       <td><b>${esc(r.depot)}</b></td>
       <td>${esc(r.category)} <span class="sub" style="font-size:11px;">(${u})</span></td>
-      <td class="num">${fmt(o)}</td>
+      <td class="num">${fmt(o)} ${r.total_orders_count > 0 ? `<span class="sub" style="font-size:11px;">(${r.total_orders_count} SOs)</span>` : ''}</td>
       <td class="num">${fmt(v)}</td>
       <td class="center">${varBadge}</td>
       <td class="num">${fmt(r.stock)}</td>
@@ -3234,6 +3258,7 @@ function renderCategoryModal(catName, sortCol = 'all') {
 
   // Compute category totals
   let totO = 0, totV = 0, totS = 0, totA = 0;
+  let totSOs = 0, totPendingSOs = 0;
   let pendingDepotsCount = 0;
 
   catEntries.forEach(r => {
@@ -3244,18 +3269,20 @@ function renderCategoryModal(catName, sortCol = 'all') {
     totV += v;
     totS += num(r.stock);
     totA += num(r.avg_daily);
-    if (pend > 0) pendingDepotsCount++;
+    totSOs += (r.total_orders_count != null && r.total_orders_count > 0 ? r.total_orders_count : (o > 0 ? 1 : 0));
+    totPendingSOs += (r.pending_orders != null && r.pending_orders > 0 ? r.pending_orders : (pend > 0 ? 1 : 0));
+    if (pend > 0 || (r.pending_orders != null && r.pending_orders > 0)) pendingDepotsCount++;
   });
 
   const totP = Math.max(0, totO - totV);
   const fulPct = pct(totV, totO);
   const covDays = totA > 0 ? (totS / totA).toFixed(1) : '–';
 
-  $('modal_cat_orders').textContent = fmt(totO);
+  $('modal_cat_orders').innerHTML = `${fmt(totO)} ${totSOs > 0 ? `<span style="font-size:13px; font-weight:normal;">(${totSOs} Orders)</span>` : ''}`;
   $('modal_cat_unit').textContent = `Unit: ${u}`;
   $('modal_cat_delivered').textContent = fmt(totV);
   $('modal_cat_ful').textContent = `Ful: ${fulPct}%`;
-  $('modal_cat_pending').textContent = fmt(totP);
+  $('modal_cat_pending').innerHTML = `${totPendingSOs > 0 ? `${totPendingSOs} Orders ` : ''}<span style="font-size:13px; font-weight:normal;">(${fmt(totP)} ${u})</span>`;
   $('modal_cat_pending_depots').textContent = `${pendingDepotsCount} depot(s) pending`;
   $('modal_cat_stock').textContent = fmt(totS);
   $('modal_cat_stock_depots').textContent = `Across ${catEntries.length} depots`;
@@ -3317,7 +3344,13 @@ function renderCategoryModal(catName, sortCol = 'all') {
     const depNameLower = String(r.depot || '').toLowerCase();
     const isFactory = depNameLower.includes('factory') || depNameLower.includes('ashulia') || depNameLower.includes('gazipur');
 
-    if (v > o) {
+    if (r.pending_orders > 0) {
+      const diff = Math.max(0, o - v);
+      varPill = `<span class="badge" style="background:var(--warn-bg); color:var(--warn); font-weight:700;" title="পেন্ডিং: ${r.pending_orders} টি সেলস অর্ডার (${fmt(diff)} ${u})">⏳ ${r.pending_orders} SOs (-${fmt(diff)})</span>`;
+      if (!autoReason) {
+        autoReason = `আজকের অর্ডার পেন্ডিং / প্রসেসিং (-${fmt(diff)} ${u})`;
+      }
+    } else if (v > o) {
       const diff = v - o;
       varPill = `<span class="badge" style="background:var(--ok-bg); color:var(--ok); font-weight:700;">+${fmt(diff)}</span>`;
       if (!autoReason) {
@@ -3347,7 +3380,7 @@ function renderCategoryModal(catName, sortCol = 'all') {
 
     return `<tr>
       <td><b>${esc(r.depot)}</b></td>
-      <td class="num" ${tdOrdersStyle}>${fmt(o)}</td>
+      <td class="num" ${tdOrdersStyle}>${fmt(o)} ${r.total_orders_count > 0 ? `<span class="sub" style="font-size:11px;">(${r.total_orders_count} SOs)</span>` : ''}</td>
       <td class="num" ${tdDeliveredStyle}>${fmt(v)}</td>
       <td class="center" ${tdPendingStyle}>${varPill}</td>
       <td class="center"><span class="cover-pill ${fPill}">${fPct}%</span></td>
@@ -4488,6 +4521,91 @@ async function doClearDataRange() {
     }
   }
 }
+
+// ========================================================
+// PRINT SUPPORT FOR ALL DATA DRILL-DOWN MODALS
+// ========================================================
+const PRINTABLE_MODALS = ['modal-pending', 'modal-category-drilldown', 'modal-sales', 'modal-onroad', 'modal-dispatches', 'modal-maintenance', 'modal-depots-status'];
+
+function installModalPrintButtons() {
+  PRINTABLE_MODALS.forEach(id => {
+    const modal = $(id);
+    if (!modal) return;
+    const header = modal.querySelector('.modal-header');
+    const closeBtn = header && header.querySelector('.modal-close');
+    if (!header || !closeBtn || header.querySelector('.modal-print')) return;
+    const wrap = document.createElement('div');
+    wrap.className = 'modal-actions';
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'modal-print';
+    btn.id = 'btn_print_' + id.replace(/-/g, '_');
+    btn.title = 'Print this report';
+    btn.innerHTML = '🖨️ Print';
+    btn.onclick = (e) => { e.stopPropagation(); printModal(id); };
+    closeBtn.parentNode.insertBefore(wrap, closeBtn);
+    wrap.appendChild(btn);
+    wrap.appendChild(closeBtn);
+  });
+}
+
+function printModal(id) {
+  const modal = $(id);
+  if (!modal) return;
+  const box = modal.querySelector('.modal-box');
+  const clone = box.cloneNode(true);
+
+  // Replace live form controls with their current values (selects/inputs don't print well)
+  const liveSel = box.querySelectorAll('select');
+  clone.querySelectorAll('select').forEach((s, i) => {
+    const src = liveSel[i];
+    const span = document.createElement('b');
+    span.textContent = src && src.selectedIndex >= 0 ? src.options[src.selectedIndex].text : '';
+    s.replaceWith(span);
+  });
+  clone.querySelectorAll('input[type="text"], input[type="search"]').forEach(inp => {
+    if (!inp.value) inp.remove();
+    else { const b = document.createElement('span'); b.textContent = 'Filter: ' + inp.value; inp.replaceWith(b); }
+  });
+  clone.querySelectorAll('button, .modal-actions, .kpi-link-hint').forEach(el => el.remove());
+  clone.querySelectorAll('tr').forEach(tr => { if (tr.style.display === 'none') tr.remove(); });
+  // Expand truncated SO lists to full text for print
+  clone.querySelectorAll('[data-full]').forEach(el => { el.textContent = el.getAttribute('data-full'); });
+
+  const title = (box.querySelector('.modal-title') || {}).textContent || 'Report';
+  const dateLbl = ($('dash_active_date_label') || {}).textContent || ($('date') ? $('date').value : '');
+  const styles = [...document.querySelectorAll('style')].map(s => s.outerHTML).join('\n');
+  const w = window.open('', '_blank', 'width=1100,height=800');
+  if (!w) { msg('Popup blocked — please allow popups to print.'); return; }
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>${esc(title.trim())}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Hind+Siliguri:wght@400;600;700&display=swap" rel="stylesheet">
+    ${styles}
+    <style>
+      body { background:#fff !important; color:#111 !important; padding:18px; font-family:Inter,'Hind Siliguri',sans-serif; }
+      .print-head { display:flex; justify-content:space-between; align-items:flex-end; border-bottom:2px solid #023D7F; padding-bottom:8px; margin-bottom:12px; }
+      .print-head h2 { margin:0; font-size:18px; color:#023D7F; }
+      .print-head .meta { font-size:12px; color:#444; text-align:right; }
+      .modal-box { max-height:none !important; box-shadow:none !important; border:none !important; max-width:100% !important; }
+      .modal-header { display:none !important; }
+      .modal-body { overflow:visible !important; padding:0 !important; }
+      .table-wrap { overflow:visible !important; max-height:none !important; }
+      table { width:100%; border-collapse:collapse; font-size:11.5px; }
+      th, td { border:1px solid #cfd6e0 !important; padding:5px 7px !important; }
+      th { background:#eef2f8 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+      .badge, .cover-pill, .kpi-card { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+      .print-foot { margin-top:14px; font-size:11px; color:#666; text-align:center; }
+      @page { size: A4 landscape; margin: 10mm; }
+    </style></head><body>
+    <div class="print-head"><div><h2>${esc(title.trim())}</h2><div style="font-size:12px;color:#555;">Paragon Agro Ltd. — Daily Update Portal</div></div>
+      <div class="meta">Report Date: <b>${esc(dateLbl)}</b><br>Printed: ${new Date().toLocaleString('en-GB')}${me && me.name ? '<br>By: ' + esc(me.name) : ''}</div></div>
+    ${clone.outerHTML}
+    <div class="print-foot">System generated report • Source: Poloxy ERP Sync</div>
+    <script>window.onload = () => { setTimeout(() => { window.focus(); window.print(); }, 350); };<\/script>
+    </body></html>`);
+  w.document.close();
+}
+
+installModalPrintButtons();
 
 // Start app
 boot();

@@ -199,6 +199,35 @@ def match_depot_from_ref(ref_str, depots_dict, default_depot=None):
 
     return default_depot
 
+def get_so_booking_dates_for_delivery_date(deliv_dt):
+    """
+    Paragon Agro Supply Chain Order Fulfillment Cycle:
+    - Standard weekday (Sun, Mon, Tue, Wed, Thu):
+      Orders booked on day D-1 are delivered on day D (e.g. 6th Oct orders deliver on 7th Oct).
+    - Friday delivery:
+      Fulfills Thursday (D-1) orders.
+    - Saturday delivery:
+      Thursday orders deliver partially on Friday and mostly on Saturday, plus any Friday orders.
+      So Saturday delivery (D) fulfills Thursday (D-2) and Friday (D-1) orders.
+    """
+    wd = deliv_dt.weekday() # 0=Mon, 1=Tue, 2=Wed, 3=Thu, 4=Fri, 5=Sat, 6=Sun
+    if wd == 5: # Saturday
+        return [deliv_dt - timedelta(days=2), deliv_dt - timedelta(days=1)] # Thursday & Friday
+    elif wd == 4: # Friday
+        return [deliv_dt - timedelta(days=1)] # Thursday
+    else: # Sun, Mon, Tue, Wed, Thu
+        return [deliv_dt - timedelta(days=1)] # D - 1
+
+def get_so_booking_dates_for_range(start_dt, end_dt):
+    all_dates = set()
+    cur = start_dt.date() if isinstance(start_dt, datetime) else start_dt
+    end = end_dt.date() if isinstance(end_dt, datetime) else end_dt
+    while cur <= end:
+        for d in get_so_booking_dates_for_delivery_date(cur):
+            all_dates.add(d)
+        cur += timedelta(days=1)
+    return sorted(all_dates)
+
 class PoloxyClient:
     def __init__(self, base_url=BASE_URL, username=USERNAME, password=PASSWORD):
         self.base_url = base_url
@@ -328,9 +357,7 @@ class PoloxyClient:
 
         return tot
 
-    def fetch_sales_orders(self, cat_conf, start_date_str, end_date_str=None, dn_order_nos=None):
-        if not end_date_str:
-            end_date_str = start_date_str
+    def fetch_sales_orders(self, cat_conf, booking_dates, end_date_str=None, dn_order_nos=None):
         if dn_order_nos is None:
             dn_order_nos = set()
         branch_name = cat_conf['name']
@@ -340,10 +367,25 @@ class PoloxyClient:
         default_depot = cat_conf.get('default_depot')
         is_egg = bool(cat_conf.get('egg_mode'))
 
-        start_d = datetime.strptime(start_date_str, "%d/%m/%Y").date()
-        end_d = datetime.strptime(end_date_str, "%d/%m/%Y").date()
+        # Support both booking_dates list and legacy (start_date_str, end_date_str)
+        if isinstance(booking_dates, (str, bytes)):
+            if end_date_str:
+                d1 = datetime.strptime(booking_dates, "%d/%m/%Y").date()
+                d2 = datetime.strptime(end_date_str, "%d/%m/%Y").date()
+                booking_dates = [d1 + timedelta(days=i) for i in range((d2 - d1).days + 1)]
+            else:
+                booking_dates = [datetime.strptime(booking_dates, "%d/%m/%Y").date()]
+        elif isinstance(booking_dates, list) and booking_dates and isinstance(booking_dates[0], str):
+            booking_dates = [datetime.strptime(d, "%d/%m/%Y").date() for d in booking_dates]
 
-        print(f"[*] Fetching Sales Orders for {branch_name} ({start_date_str} to {end_date_str})...")
+        start_d = min(booking_dates)
+        end_d = max(booking_dates)
+        start_date_str = start_d.strftime("%d/%m/%Y")
+        end_date_str = end_d.strftime("%d/%m/%Y")
+        booking_dates_set = set(booking_dates)
+
+        dates_repr = ', '.join(d.strftime('%d/%m/%Y') for d in booking_dates)
+        print(f"[*] Fetching Sales Orders for {branch_name} (Booking Dates: {dates_repr})...")
         so_url = f"{self.base_url}/COMMON/dt_sale_order_status_report"
         form_data = {
             'branch_name': branch_name,
@@ -365,6 +407,7 @@ class PoloxyClient:
         orders_by_depot = {k: 0.0 for k in depots_dict}
         total_sos_by_depot = {k: 0 for k in depots_dict}
         pending_sos_by_depot = {k: 0 for k in depots_dict}
+        pending_qty_by_depot = {k: 0.0 for k in depots_dict}
         pending_so_numbers_by_depot = {k: [] for k in depots_dict}
 
         # Group rows by unique SO number to accurately count unique sales orders
@@ -376,7 +419,7 @@ class PoloxyClient:
             if len(cells) < 12 or cells[0] == 'Sr.No.' or 'Internet Explorer' in cells[0]:
                 continue
 
-            # Filter order date to ensure it is strictly within requested start_date and end_date
+            # Filter order date to ensure it strictly belongs to target booking dates
             order_date_raw = cells[1] if len(cells) > 1 else ''
             if order_date_raw:
                 so_dt = None
@@ -386,7 +429,7 @@ class PoloxyClient:
                         break
                     except ValueError:
                         pass
-                if so_dt and (so_dt < start_d or so_dt > end_d):
+                if so_dt and (so_dt not in booking_dates_set):
                     continue
 
             so_no = cells[3] if len(cells) > 3 else ''
@@ -423,12 +466,14 @@ class PoloxyClient:
                 has_dn = bool(so_info['dn_nos']) or (so_key in dn_order_nos)
                 if not has_dn:
                     pending_sos_by_depot[d] += 1
+                    pending_qty_by_depot[d] += so_info['so_qty']
                     pending_so_numbers_by_depot[d].append(so_key)
 
         return {
             'orders_by_depot': orders_by_depot,
             'total_sos_by_depot': total_sos_by_depot,
             'pending_sos_by_depot': pending_sos_by_depot,
+            'pending_qty_by_depot': pending_qty_by_depot,
             'pending_so_numbers_by_depot': pending_so_numbers_by_depot
         }
 
@@ -497,6 +542,12 @@ def run_category_sync(client, cat_key, cat_conf, start_date_str, end_date_str, s
         print(f"[*] Report Mode: DATE RANGE ({start_date_str} to {end_date_str}) [{num_days} Days]")
     print(f"{'='*70}")
 
+    # Determine corresponding SO booking dates using Paragon supply chain order-to-delivery fulfillment rules
+    booking_dates = get_so_booking_dates_for_range(start_dt, end_dt)
+    booking_dates_str = ', '.join(d.strftime('%d/%m/%Y') for d in booking_dates)
+    booking_label = ', '.join(d.strftime('%d/%m') for d in booking_dates)
+    print(f"[*] Delivery Cycle Order Dates: {booking_dates_str} (Supply Chain D-1 / Weekend correlation)")
+
     # 1. Fetch Delivery Notes for Exact Date / Range FIRST so we can match Challans
     delivery_rows = client.fetch_delivery_notes(cat_conf, start_date_str, end_date_str)
     print(f" -> Found {len(delivery_rows):,} delivery transactions from ERP response.")
@@ -508,17 +559,19 @@ def run_category_sync(client, cat_key, cat_conf, start_date_str, end_date_str, s
         if ord_no and ref_id:
             dn_order_nos.add(ord_no)
 
-    # 2. Fetch Sales Orders for Exact Date / Range and cross-reference with DN numbers
-    so_data = client.fetch_sales_orders(cat_conf, start_date_str, end_date_str, dn_order_nos=dn_order_nos)
+    # 2. Fetch Sales Orders for the corresponding booking dates and cross-reference with DN numbers
+    so_data = client.fetch_sales_orders(cat_conf, booking_dates, dn_order_nos=dn_order_nos)
     if isinstance(so_data, dict) and 'orders_by_depot' in so_data:
         orders_map = so_data['orders_by_depot']
         total_sos_map = so_data['total_sos_by_depot']
         pending_sos_map = so_data['pending_sos_by_depot']
+        pending_qty_map = so_data.get('pending_qty_by_depot', {})
         pending_so_numbers_map = so_data['pending_so_numbers_by_depot']
     else:
         orders_map = so_data
         total_sos_map = {k: 0 for k in depots_dict}
         pending_sos_map = {k: 0 for k in depots_dict}
+        pending_qty_map = {k: 0.0 for k in depots_dict}
         pending_so_numbers_map = {k: [] for k in depots_dict}
 
     # Name mapping
@@ -613,24 +666,28 @@ def run_category_sync(client, cat_key, cat_conf, start_date_str, end_date_str, s
         stock = round(stock_map.get(code, 0.0), 1 if unit == 'Kg' else 0)
         orders = round(orders_map.get(code, 0.0), 1 if unit == 'Kg' else 0)
         delivered = round(delivered_map.get(code, 0.0), 1 if unit == 'Kg' else 0)
-        pending = max(0.0, round(orders - delivered, 1 if unit == 'Kg' else 0))
+        p_so_cnt = pending_sos_map.get(code, 0)
+        p_so_qty = round(pending_qty_map.get(code, 0.0), 1 if unit == 'Kg' else 0)
+        pending = p_so_qty if p_so_cnt > 0 else max(0.0, round(orders - delivered, 1 if unit == 'Kg' else 0))
         variance = round(delivered - orders, 1 if unit == 'Kg' else 0)
+        t_so_cnt = total_sos_map.get(code, 0)
+        p_so_nums = pending_so_numbers_map.get(code, [])
 
         # Operational variance reasoning
         dep_name_lower = str(depots_dict[code].get('name', '')).lower()
         is_factory = 'factory' in dep_name_lower or 'ashulia' in dep_name_lower or 'gazipur' in dep_name_lower
 
-        if delivered > orders:
+        if p_so_cnt > 0:
+            diff_str = f"{pending:,.1f}" if unit == 'Kg' else f"{int(pending):,}"
+            reason = f"{booking_label} অর্ডারের {p_so_cnt} টি সেলস অর্ডার ({diff_str} {unit}) চালান প্রক্রিয়াধীন / ইন-ট্রানজিট"
+        elif delivered > orders:
             diff_str = f"{variance:,.1f}" if unit == 'Kg' else f"{int(variance):,}"
             if is_factory:
                 reason = f"ডেলিভারি বেশি (+{diff_str} {unit}): ফ্যাক্টরি বাল্ক ও পূর্ববর্তী ব্যাকলগ চালান সরবরাহ"
             else:
                 reason = f"ডেলিভারি বেশি (+{diff_str} {unit}): বিগত দিনের পেন্ডিং/ব্যাকলগ অর্ডার সরবরাহ"
-        elif orders > delivered:
-            diff_str = f"{pending:,.1f}" if unit == 'Kg' else f"{int(pending):,}"
-            reason = f"পেন্ডিং (-{diff_str} {unit}): আজকের অর্ডারের চালান প্রক্রিয়াধীন / ইন-ট্রানজিট"
         elif orders > 0:
-            reason = "১০০% সম্পূর্ণ সরবরাহ (100% Fulfilled)"
+            reason = f"১০০% সম্পূর্ণ সরবরাহ (সকল {t_so_cnt} টি অর্ডারের চালান সম্পন্ন ✓)"
         else:
             reason = "কার্যক্রম নেই (No Activity)"
 
