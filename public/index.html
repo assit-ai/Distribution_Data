@@ -2342,7 +2342,7 @@ function renderAll() {
       varBadge = `<span class="badge" style="background:var(--ok-bg); color:var(--ok); font-weight:700;" title="ডেলিভারি বেশি (+${fmt(diff)} ${u}): পূর্ববর্তী ব্যাকলগ ও বাল্ক চালান সরবরাহ">+${fmt(diff)} (ডেলিভারি বেশি)</span>`;
     } else if (o > v) {
       const diff = o - v;
-      varBadge = `<span class="badge" style="background:rgba(234, 179, 8, 0.15); color:var(--warn); font-weight:700;" title="আজকের বুকিং কালকের ডেলিভারি শিডিউলের অন্তর্ভুক্ত (-${fmt(diff)} ${u})">⏳ কালকের শিডিউল (-${fmt(diff)})</span>`;
+      varBadge = `<span class="badge" style="background:rgba(234, 179, 8, 0.15); color:var(--warn); font-weight:700;" title="আংশিক সরবরাহ / চালান চলমান (-${fmt(diff)} ${u})">⏳ আংশিক ডেলিভারি (-${fmt(diff)})</span>`;
     } else if (o > 0) {
       varBadge = `<span class="badge" style="background:var(--primary-bg); color:var(--primary);">0 (সমন্বিত ✓)</span>`;
     } else {
@@ -2398,7 +2398,7 @@ function renderAll() {
       const diff = Math.max(0, o - v);
       varBadge = `<span class="badge" style="background:var(--warn-bg); color:var(--warn); font-weight:700;" title="চালান অনিষ্পন্ন: ${r.pending_orders} টি সেলস অর্ডার (${fmt(diff)} ${u})">⏳ ${r.pending_orders} SOs (-${fmt(diff)})</span>`;
       if (!autoReason) {
-        autoReason = `পূর্ববর্তী শিডিউলের চালান অনিষ্পন্ন / ইন-ট্রানজিট (-${fmt(diff)} ${u})`;
+        autoReason = `পূর্বনির্ধারিত শিডিউলের চালান অনিষ্পন্ন (-${fmt(diff)} ${u})`;
       }
     } else if (v > o) {
       const diff = v - o;
@@ -2410,9 +2410,9 @@ function renderAll() {
       }
     } else if (o > v) {
       const diff = o - v;
-      varBadge = `<span class="badge" style="background:rgba(234, 179, 8, 0.15); color:var(--warn); font-weight:700;" title="আজকের বুকিং কালকের ডেলিভারি শিডিউলের অন্তর্ভুক্ত (-${fmt(diff)} ${u})">⏳ কালকের শিডিউল (-${fmt(diff)})</span>`;
+      varBadge = `<span class="badge" style="background:rgba(234, 179, 8, 0.15); color:var(--warn); font-weight:700;" title="আংশিক সরবরাহ সম্পন্ন (-${fmt(diff)} ${u})">⏳ আংশিক ডেলিভারি (-${fmt(diff)})</span>`;
       if (!autoReason) {
-        autoReason = `কালকের ডেলিভারি শিডিউলভুক্ত / প্রসেসিং (-${fmt(diff)} ${u})`;
+        autoReason = `নির্ধারিত অর্ডারের আংশিক সরবরাহ সম্পন্ন (-${fmt(diff)} ${u})`;
       }
     } else if (o > 0) {
       varBadge = `<span class="sub" style="color:var(--ok); font-weight:600;">0 ✓</span>`;
@@ -2520,19 +2520,25 @@ function renderVarianceInsights() {
         </div>
       `);
     } else if (o > v) {
+      const pSoTotal = catEnts.reduce((sum, r) => sum + (r.pending_orders || 0), 0);
+      const badgeText = pSoTotal > 0
+        ? `⏳ ${pSoTotal} টি SO অনিষ্পন্ন / আংশিক ডেলিভারি`
+        : `⏳ আংশিক সরবরাহ / চালান সমন্বয় চলমান (-${fmt(diff)} ${u})`;
+
       insights.push(`
         <div style="padding:10px 14px; background:var(--card); border:1px solid var(--bd); border-radius:8px; margin-bottom:8px; display:flex; flex-direction:column; gap:4px;">
           <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
             <span style="font-size:14px; font-weight:700; color:var(--tx);">
-              ⏳ <b>${esc(c)}</b> (${u}): সেলস অর্ডার <span style="color:var(--warn);">${fmt(o)}</span> বনাম ডেলিভারি <span>${fmt(v)}</span>
+              ⏳ <b>${esc(c)}</b> (${u}): নির্ধারিত সেলস অর্ডার <span style="color:var(--warn);">${fmt(o)}</span> বনাম ডেলিভারি <span style="color:var(--ok); font-weight:700;">${fmt(v)}</span>
             </span>
-            <span class="badge" style="background:rgba(234, 179, 8, 0.15); color:var(--warn); font-size:12px; font-weight:700;">
-              ⏳ ইন-প্রসেসিং / পরবর্তী দিনের ডেলিভারি শিডিউল (-${fmt(diff)} ${u})
+            <span class="badge" style="background:var(--warn-bg); color:var(--warn); font-size:12px; font-weight:700;">
+              ${badgeText}
             </span>
           </div>
           <div style="font-size:12.5px; color:var(--tx); line-height:1.4;">
-            <b>💡 স্ট্যাটাস ও সাপ্লাই চেইন ব্যাখ্যা:</b> এই বুকিংকৃত অর্ডারগুলোকে <b>আজকের পেন্ডিং ডেলিভারি হিসেবে দেখানো যাবে না</b>; কারণ সাপ্লাই চেইন সাইকেল অনুযায়ী আজকের নতুন সেলস অর্ডারের ডেলিভারি নোট/চালান <b>আগামীকালের ডেলিভারি শিডিউলের জন্য প্রস্তুত হবে</b>। (বর্তমানে প্রসেসিং ও শিডিউলিং পর্যায়ে রয়েছে)
-            ${pendingDepots.length ? `<br><span style="font-size:11.5px; color:var(--mut);">পরবর্তী দিনের শিডিউলভুক্ত/চলমান ডিপোসমূহ: <b>${esc(pendingDepots.join(', '))}</b></span>` : ''}
+            <b>💡 ডেলিভারি স্ট্যাটাস:</b> আজকের ডেলিভারির জন্য পূর্বনির্ধারিত অর্ডারের মধ্যে <b>${fmt(v)} ${u}</b> সরবরাহ সম্পন্ন হয়েছে। ${pSoTotal > 0 ? `এর মধ্যে <b>${pSoTotal}</b> টি সেলস অর্ডারের চালান এখনো অনিষ্পন্ন বা প্রস্তুত হয়নি।` : `বাকি অংশের ডেলিভারি চালান প্রসেসিং/ট্রানজিট পর্যায়ে রয়েছে।`}
+            <br><span style="font-size:11.5px; color:var(--mut);"><i>(📌 গুরুত্বপূর্ণ নিয়ম: আজকের নতুন বুকিংকৃত অর্ডার আজকের কাউন্টে বা পেন্ডিংয়ে আসবে না; সেগুলো আগামীকালের অর্ডার ও ডেলিভারি রিপোর্টে হিসাবভুক্ত হবে)।</i></span>
+            ${pendingDepots.length ? `<br><span style="font-size:11.5px; color:var(--mut);">পার্থক্য থাকা ডিপোসমূহ: <b>${esc(pendingDepots.join(', '))}</b></span>` : ''}
           </div>
         </div>
       `);
@@ -3202,8 +3208,7 @@ function renderPendingModal() {
 
   tb.innerHTML = pendingRows.map(row => {
     const fulPct = pct(row.delivered, row.orders);
-    const pillClass = fulPct >= 90 ? 'cover-ok' : (fulPct >= 60 ? 'cover-pill' : 'cover-bad');
-    const reason = row.remarks || (row.pending_orders > 0 ? `পূর্ববর্তী শিডিউলের চালান অনিষ্পন্ন / ইন-ট্রানজিট (-${fmt(row.pending)} ${row.unit})` : `পরবর্তী দিনের ডেলিভারি শিডিউলভুক্ত / প্রসেসিং (-${fmt(row.pending)} ${row.unit})`);
+    const reason = row.remarks || (row.pending_orders > 0 ? `পূর্বনির্ধারিত শিডিউলের চালান অনিষ্পন্ন (-${fmt(row.pending)} ${row.unit})` : `নির্ধারিত অর্ডারের আংশিক সরবরাহ সম্পন্ন (-${fmt(row.pending)} ${row.unit})`);
     let soBadge = '<span class="badge cover-ok">0 Pending</span>';
     if (row.pending_orders > 0) {
       let soPreview = '';
@@ -3382,9 +3387,9 @@ function renderCategoryModal(catName, sortCol = 'all') {
       }
     } else if (o > v) {
       const diff = o - v;
-      varPill = `<span class="badge" style="background:rgba(234, 179, 8, 0.15); color:var(--warn); font-weight:700;" title="আজকের বুকিং কালকের ডেলিভারি শিডিউলের অন্তর্ভুক্ত (-${fmt(diff)} ${u})">⏳ কালকের শিডিউল (-${fmt(diff)})</span>`;
+      varPill = `<span class="badge" style="background:rgba(234, 179, 8, 0.15); color:var(--warn); font-weight:700;" title="আংশিক সরবরাহ সম্পন্ন (-${fmt(diff)} ${u})">⏳ আংশিক ডেলিভারি (-${fmt(diff)})</span>`;
       if (!autoReason) {
-        autoReason = `কালকের ডেলিভারি শিডিউলভুক্ত / প্রসেসিং (-${fmt(diff)} ${u})`;
+        autoReason = `নির্ধারিত অর্ডারের আংশিক সরবরাহ সম্পন্ন (-${fmt(diff)} ${u})`;
       }
     } else if (o > 0) {
       varPill = `<span class="sub" style="color:var(--ok); font-weight:600;">0 ✓</span>`;
