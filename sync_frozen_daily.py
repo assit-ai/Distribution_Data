@@ -141,6 +141,23 @@ DEFAULT_CONFIG = {
                 ]
             }
         }
+    },
+    'Tea': {
+        'name': '04. Tea',
+        'branch_id': 'B0004',
+        'item_group': 'TEA',
+        'group_id': '18',
+        'unit': 'Kg',
+        'default_depot': 'tejgaon04',
+        'dn_qty_field': 'sec_qty',
+        'so_qty_col': 11,
+        'depots': {
+            'tejgaon04': {
+                'name': '04. Tea Tejgaon Depot',
+                'godown_id': 'G208',
+                'ref_patterns': ['04.TG', '04 TG', '04.TEJGAON', '04 TEJGAON', '04.TEA', 'TEA']
+            }
+        }
     }
 }
 
@@ -863,24 +880,27 @@ if __name__ == '__main__':
         today_str = datetime.now().strftime("%d/%m/%Y")
         print("=" * 70)
         print("          PARAGON AGRO LTD. - ERP DAILY AUTO SYNC")
-        print("          Categories: Frozen Foods, Process Chicken, Branded Eggs")
+        print("          Categories: Frozen Foods, Process Chicken, Branded Eggs, Tea")
         print("=" * 70)
         inp = input(f"Enter Start Date [DD/MM/YYYY] (Press Enter for Today: {today_str}): ").strip()
         start_date = inp if inp else today_str
         inp_end = input(f"Enter End Date [DD/MM/YYYY] (Press Enter for same date): ").strip()
         end_date = inp_end if inp_end else start_date
         print("\nSelect Category to Sync:")
-        print("  1. All Categories (Frozen + Chicken + Egg) [Default]")
+        print("  1. All Categories (Frozen + Chicken + Egg + Tea) [Default]")
         print("  2. Frozen Foods")
         print("  3. Process Chicken")
         print("  4. Branded Eggs")
-        c_choice = input("Enter choice [1-4, Default=1]: ").strip()
+        print("  5. Tea")
+        c_choice = input("Enter choice [1-5, Default=1]: ").strip()
         if c_choice == '2':
             category_filter = 'Frozen'
         elif c_choice == '3':
             category_filter = 'Chicken'
         elif c_choice == '4':
             category_filter = 'Egg'
+        elif c_choice == '5':
+            category_filter = 'Tea'
         else:
             category_filter = 'all'
         export_excel = True

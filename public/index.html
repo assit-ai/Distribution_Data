@@ -574,9 +574,16 @@ tr:hover td { background: rgba(0,0,0,0.015); }
     <div id="tab-dash" class="adm">
       <!-- Admin Dashboard Controls & Clear Data Toolbar -->
       <div class="card adm" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; padding:10px 16px; margin-bottom:14px; background:var(--card); border:1px solid var(--bd);">
-        <div style="display:flex; align-items:center; gap:8px;">
+        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
           <span style="font-weight:700; font-size:13px; color:var(--tx);">🛠️ Admin Quick Tools:</span>
           <span class="sub" style="font-size:12px;">Active Date: <b id="dash_active_date_label" style="color:var(--ac)">–</b></span>
+          <!-- Dynamic Product Category Filter Dropdown -->
+          <div style="display:inline-flex; align-items:center; gap:6px; margin-left:4px; padding-left:10px; border-left:1px solid var(--bd);">
+            <label for="dash_cat_filter" style="font-size:12px; font-weight:700; color:var(--tx); white-space:nowrap;">📦 Category:</label>
+            <select id="dash_cat_filter" onchange="onDashCategoryChange()" style="padding:5px 12px; font-size:12px; font-weight:700; border-radius:6px; border:1px solid var(--bd); background:var(--bg); color:var(--tx); cursor:pointer; min-width:145px; box-shadow:0 1px 2px rgba(0,0,0,0.05);" title="Filter entire dashboard by Product Category (e.g. Frozen, Chicken, Egg, Tea)">
+              <option value="all">📦 All Categories</option>
+            </select>
+          </div>
         </div>
         <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
           <button class="sm p" onclick="openErpSyncModal()" style="font-size:12px; font-weight:700; background:var(--ok); border-color:var(--ok);" title="Zero-installation Poloxy ERP sync directly from cloud/browser">⚡ ERP Auto Sync (Cloud/Mobile)</button>
@@ -1127,10 +1134,11 @@ Savar	DM-THA-12-3040	Abdul Ali	01811000002	2.0 Ton Van	active" oninput="parsePas
           <div>
             <label>Product Category</label>
             <select id="auto_sync_cat">
-              <option value="all">⚡ All Categories (Frozen + Chicken + Egg)</option>
+              <option value="all">⚡ All Categories (Frozen + Chicken + Egg + Tea)</option>
               <option value="Frozen">❄️ Frozen Foods (02. Frozen Foods - CUT-Up-Part)</option>
               <option value="Chicken">🍗 Process Chicken (01. Process Chicken - CUT-Up-Part)</option>
               <option value="Egg">🥚 Branded Egg (03. Branded Eggs - PACKED EGGS)</option>
+              <option value="Tea">🍵 Tea (04. Tea)</option>
             </select>
           </div>
           <div>
@@ -1904,10 +1912,11 @@ Savar	Egg	42000	7500" oninput="parsePastedTable()"></textarea>
         <div>
           <label style="font-weight:600; font-size:12px;">Product Category *</label>
           <select id="erp_sync_cat" style="padding:8px 10px; width:100%;">
-            <option value="all">🌟 All Categories (Frozen + Chicken + Egg)</option>
+            <option value="all">🌟 All Categories (Frozen + Chicken + Egg + Tea)</option>
             <option value="Frozen">❄️ 02. Frozen Foods (Pkt)</option>
             <option value="Chicken">🍗 01. Process Chicken (Kg)</option>
             <option value="Egg">🥚 03. Branded Eggs (Pcs)</option>
+            <option value="Tea">🍵 04. Tea (Kg)</option>
           </select>
         </div>
       </div>
@@ -2177,9 +2186,32 @@ async function loadCategories() {
       `).join('');
     }
     updateEntryFormUnits();
+    populateDashCategoryDropdown();
   } catch (e) {
     console.error('Category load error:', e);
   }
+}
+
+function populateDashCategoryDropdown() {
+  const sel = $('dash_cat_filter');
+  if (!sel) return;
+  const curVal = sel.value || 'all';
+  const allCats = (CATS && CATS.length) ? CATS : ['Frozen', 'Chicken', 'Egg', 'Dairy', 'Tea', 'Sweets', 'Others'];
+  const opts = [
+    '<option value="all">📦 All Categories</option>',
+    ...allCats.map(c => `<option value="${esc(c)}">${esc(c)} (${getCatUnit(c)})</option>`)
+  ];
+  sel.innerHTML = opts.join('');
+  if (curVal === 'all' || allCats.some(c => lc(c) === lc(curVal))) {
+    sel.value = curVal;
+  } else {
+    sel.value = 'all';
+  }
+}
+
+function onDashCategoryChange() {
+  renderAll();
+  autoDetectTopLowDepots(false);
 }
 
 async function addCategory() {
@@ -2376,9 +2408,12 @@ function calcAch() {
 }
 
 function autoDetectTopLowDepots(force = false) {
-  if (!ents || !ents.length) return;
+  const catFilterEl = $('dash_cat_filter');
+  const selectedCat = (catFilterEl && catFilterEl.value) ? catFilterEl.value : 'all';
+  const targetEnts = (selectedCat !== 'all') ? ents.filter(r => lc(r.category) === lc(selectedCat)) : ents;
+  if (!targetEnts || !targetEnts.length) return;
   const depotStats = {};
-  ents.forEach(r => {
+  targetEnts.forEach(r => {
     const d = r.depot;
     if (!depotStats[d]) depotStats[d] = { depot: d, delivered: 0, orders: 0, pending: 0, pSoCnt: 0 };
     depotStats[d].delivered += (r.delivered || 0);
@@ -2517,12 +2552,19 @@ function renderAll() {
     activeDateEl.textContent = (!curF) ? '–' : (curF === curT ? curF : `${curF} to ${curT}`);
   }
 
+  const catFilterEl = $('dash_cat_filter');
+  const selectedCat = (catFilterEl && catFilterEl.value) ? catFilterEl.value : 'all';
+  const isCatFiltered = (selectedCat !== 'all');
+  const filteredCats = isCatFiltered ? CATS.filter(c => lc(c) === lc(selectedCat)) : CATS;
+  const filteredEnts = isCatFiltered ? ents.filter(r => lc(r.category) === lc(selectedCat)) : ents;
+  const selectedUnit = isCatFiltered ? getCatUnit(selectedCat) : '';
+
   // 1. KPI Cards
   const catTotals = getCategoryTotals();
   let totOrders = 0, totDelivered = 0, totPendingQty = 0;
   let pendingOrdersCount = 0;
 
-  ents.forEach(r => {
+  filteredEnts.forEach(r => {
     const o = r.orders || 0;
     const v = r.delivered || 0;
     const pend = Math.max(0, o - v);
@@ -2533,7 +2575,7 @@ function renderAll() {
     }
   });
 
-  CATS.forEach(c => {
+  filteredCats.forEach(c => {
     if (catTotals[c]) {
       totOrders += catTotals[c].o;
       totDelivered += catTotals[c].v;
@@ -2541,8 +2583,31 @@ function renderAll() {
     }
   });
 
+  const uSuffix = isCatFiltered ? ` ${selectedUnit}` : '';
   $('kpi-pending').textContent = `${pendingOrdersCount} Order${pendingOrdersCount === 1 ? '' : 's'}`;
-  $('kpi-orders-tot').textContent = `Pending: ${fmt(totPendingQty)} | Orders: ${fmt(totOrders)}`;
+  $('kpi-orders-tot').textContent = `Pending: ${fmt(totPendingQty)}${uSuffix} | Orders: ${fmt(totOrders)}${uSuffix}`;
+
+  // Sales & Distribution Performance KPI
+  if (isCatFiltered) {
+    const cTot = catTotals[selectedCat] || { o: 0, v: 0, s: 0, a: 0 };
+    const catTgtObj = (currentCategoryTargets && currentCategoryTargets[selectedCat]) || {};
+    const catTodayTgt = num(catTgtObj.today_target);
+    const catMtdTgt = num(catTgtObj.mtd_target);
+    const catMtdSales = num(catTgtObj.mtd_sales);
+
+    if (catTodayTgt > 0) {
+      $('kpi-sales').textContent = `${fmt(cTot.v)} ${selectedUnit}`;
+      $('kpi-sales-ach').textContent = `Target: ${fmt(catTodayTgt)} ${selectedUnit} (Ach ${pct(cTot.v, catTodayTgt)}%)`;
+    } else if (catMtdTgt > 0) {
+      $('kpi-sales').textContent = `${formatShortAmount(catMtdSales || cTot.v)}`;
+      $('kpi-sales-ach').textContent = `MTD Target: ${formatShortAmount(catMtdTgt)} (Ach ${pct(catMtdSales || cTot.v, catMtdTgt)}%)`;
+    } else {
+      $('kpi-sales').textContent = `${fmt(cTot.v)} ${selectedUnit}`;
+      $('kpi-sales-ach').textContent = `Orders: ${fmt(cTot.o)} ${selectedUnit} (${selectedCat})`;
+    }
+  } else {
+    calcAch();
+  }
 
   // Fleet Totals & On Road Calculation (Total Assigned - Delivered - Under Maintenance)
   let totVans = 0, totDisp = 0, totDone = 0, totMaint = 0;
@@ -2570,14 +2635,29 @@ function renderAll() {
   $('flt_tot_maint').textContent = totMaint;
 
   // Depots Submitted Status
-  const submittedDepots = new Set(ents.map(r => lc(r.depot)));
+  const submittedDepots = new Set(filteredEnts.map(r => lc(r.depot)));
   const allKnownDepots = deps.length ? deps : [...new Set(ents.map(r => r.depot))];
   const subCount = allKnownDepots.filter(d => submittedDepots.has(lc(d))).length;
   $('kpi-depots').textContent = `${subCount} / ${allKnownDepots.length}`;
-  $('kpi-depots-status').textContent = subCount === allKnownDepots.length && allKnownDepots.length > 0 ? 'All depots submitted ✓' : `${allKnownDepots.length - subCount} pending`;
+  if (isCatFiltered) {
+    $('kpi-depots-status').textContent = (subCount === allKnownDepots.length && allKnownDepots.length > 0)
+      ? `All depots submitted ${selectedCat} ✓`
+      : `${allKnownDepots.length - subCount} pending for ${selectedCat}`;
+  } else {
+    $('kpi-depots-status').textContent = (subCount === allKnownDepots.length && allKnownDepots.length > 0)
+      ? 'All depots submitted ✓'
+      : `${allKnownDepots.length - subCount} pending`;
+  }
 
   // 2. Summary Category Table (Interactive Hyperlinks & Drill-downs)
-  $('tt').innerHTML = CATS.map(c => {
+  const filterResetNotice = isCatFiltered
+    ? `<tr><td colspan="7" style="background:rgba(37,99,235,0.06); padding:8px 14px; font-size:12px; color:var(--tx); border-bottom:1px solid var(--bd);">
+        <span style="font-weight:700; color:var(--primary);">🎯 Filtered View: ${esc(selectedCat)} (${selectedUnit})</span>
+        <button class="sm s" onclick="$('dash_cat_filter').value='all'; onDashCategoryChange();" style="margin-left:12px; padding:3px 10px; font-size:11px; font-weight:700;">Show All Categories ↩</button>
+      </td></tr>`
+    : '';
+
+  $('tt').innerHTML = filterResetNotice + filteredCats.map(c => {
     const x = catTotals[c] || { o: 0, v: 0, s: 0, a: 0, p: 0, n: 0, so_count: 0, pending_sos: 0 };
     const o = x.o || 0;
     const v = x.v || 0;
@@ -2629,10 +2709,11 @@ function renderAll() {
   }).join('');
 
   // Render Operational Variance & Backlog Analysis Insights Card
-  renderVarianceInsights();
+  renderVarianceInsights(filteredCats, filteredEnts);
 
   // 3. Depot Detailed Entries Table
-  $('tb').innerHTML = ents.length ? ents.map((r, i) => {
+  const displayEnts = isCatFiltered ? filteredEnts : ents;
+  $('tb').innerHTML = displayEnts.length ? displayEnts.map((r, i) => {
     const canEdit = allowed().some(d => lc(d) === lc(r.depot));
     const cov = r.avg_daily > 0 ? (r.stock / r.avg_daily).toFixed(1) : '–';
     const covClass = r.avg_daily > 0 && (r.stock / r.avg_daily) < 3 ? 'cover-bad' : 'cover-ok';
@@ -2687,7 +2768,7 @@ function renderAll() {
       <td class="sub">${esc(r.by || '')}</td>
       <td>${canEdit ? `<button class="sm" onclick="editEntry(${i})">Edit</button> <button class="sm" style="color:var(--bad)" onclick="delEntry(${i})">×</button>` : ''}</td>
     </tr>`;
-  }).join('') : `<tr><td colspan="11" class="center sub" style="padding:16px;">No entries recorded for this date.</td></tr>`;
+  }).join('') : `<tr><td colspan="11" class="center sub" style="padding:16px;">No entries recorded for this date${isCatFiltered ? ` (${selectedCat})` : ''}.</td></tr>`;
 
   // 4. Fleet Live Tracking Table
   const fleetDepotSet = new Set(deps);
@@ -2713,25 +2794,26 @@ function renderAll() {
 
   // 5. Depot Submission Checklist
   const depotSubMap = {};
-  ents.forEach(r => { (depotSubMap[lc(r.depot)] = depotSubMap[lc(r.depot)] || []).push(r.category); });
+  filteredEnts.forEach(r => { (depotSubMap[lc(r.depot)] = depotSubMap[lc(r.depot)] || []).push(r.category); });
   $('ss').innerHTML = allKnownDepots.map(d => {
-    const has = depotSubMap[lc(d)];
+    const has = depotSubMap[lc(d)] && depotSubMap[lc(d)].length > 0;
+    const catSuffix = isCatFiltered ? ` (${selectedCat})` : '';
     return `<div style="padding:8px 12px; background:var(--card); border:1px solid var(--bd); border-radius:8px; display:flex; justify-content:space-between; align-items:center;">
       <span><b>${esc(d)}</b></span>
-      <span class="badge ${has ? 'badge-depot' : 'cover-bad'}">${has ? '✓ Submitted' : 'Pending'}</span>
+      <span class="badge ${has ? 'badge-depot' : 'cover-bad'}">${has ? `✓ Submitted${catSuffix}` : 'Pending'}</span>
     </div>`;
   }).join('');
 }
 
 // Render Operational Variance & Backlog Insights Across All Categories
-function renderVarianceInsights() {
+function renderVarianceInsights(targetCats = CATS, targetEnts = ents) {
   const container = $('variance_insights_content');
   if (!container) return;
 
   const catTotals = getCategoryTotals();
   const insights = [];
 
-  CATS.forEach(c => {
+  targetCats.forEach(c => {
     const x = catTotals[c];
     if (!x || (x.o === 0 && x.v === 0)) return;
     const u = getCatUnit(c);
@@ -2740,7 +2822,7 @@ function renderVarianceInsights() {
     const diff = Math.abs(v - o);
 
     // Depot-level contributors
-    const catEnts = ents.filter(r => lc(r.category) === lc(c));
+    const catEnts = targetEnts.filter(r => lc(r.category) === lc(c));
     const overDepots = [];
     const pendingDepots = [];
 
@@ -2972,10 +3054,11 @@ function genReport() {
     `- MTD Delivery/Sales: ${formatShortAmount(sm)} Tk (Target ${formatShortAmount(smt)} Tk | Ach ${pct(sm, smt)}%)`,
     `- Top Depot: ${topDep} | Low Depot: ${lowDep}`,
     ``,
-    `🚚 *Distribution (Category-wise)*`
+    `🚚 *Distribution (${selectedCat !== 'all' ? selectedCat : 'Category-wise'})*`
   ];
 
-  CATS.forEach(c => {
+  const targetCats = (selectedCat !== 'all') ? CATS.filter(c => lc(c) === lc(selectedCat)) : CATS;
+  targetCats.forEach(c => {
     const x = catTotals[c] || { o: 0, v: 0, s: 0, a: 0 };
     const u = getCatUnit(c);
     const o = x.o || 0;
@@ -2994,8 +3077,8 @@ function genReport() {
     L.push(`- Under Maintenance: ${totVehiclesMaint}`);
   }
 
-  // Stock cover line: Frozen ___ | Chicken ___ | Egg ___ | Dairy ___ ... days
-  const coverParts = CATS.map(c => {
+  // Stock cover line
+  const coverParts = targetCats.map(c => {
     const x = catTotals[c];
     const days = (x && x.a > 0) ? (x.s / x.a).toFixed(1) : '–';
     return `${c} ${days}`;
@@ -3580,11 +3663,16 @@ function closePendingModal() {
 function renderPendingModal() {
   const tb = $('modal_pending_tb');
   if (!tb) return;
+  const catFilterEl = $('dash_cat_filter');
+  const selectedCat = (catFilterEl && catFilterEl.value) ? catFilterEl.value : 'all';
+  const isCatFiltered = (selectedCat !== 'all');
+  const sourceEnts = isCatFiltered ? ents.filter(r => lc(r.category) === lc(selectedCat)) : ents;
+
   const pendingRows = [];
   let grandPendingQty = 0;
   let pendingOrdersCount = 0;
 
-  ents.forEach(r => {
+  sourceEnts.forEach(r => {
     const o = r.orders || 0;
     const v = r.delivered || 0;
     const pend = Math.max(0, o - v);
@@ -3610,10 +3698,10 @@ function renderPendingModal() {
   });
 
   const countEl = $('modal_pending_orders_count');
-  if (countEl) countEl.textContent = `${pendingOrdersCount} Pending Unique Order${pendingOrdersCount === 1 ? '' : 's'}`;
+  if (countEl) countEl.textContent = `${pendingOrdersCount} Pending Unique Order${pendingOrdersCount === 1 ? '' : 's'}${isCatFiltered ? ` (${selectedCat})` : ''}`;
 
   const sumEl = $('modal_pending_summary');
-  if (sumEl) sumEl.textContent = `Total Pending Qty: ${fmt(grandPendingQty)}`;
+  if (sumEl) sumEl.textContent = `Total Pending Qty: ${fmt(grandPendingQty)}${isCatFiltered ? ` ${getCatUnit(selectedCat)} (${selectedCat})` : ''}`;
 
   if (!pendingRows.length) {
     tb.innerHTML = '<tr><td colspan="9" class="center ok" style="padding:20px; font-weight:700;">🎉 Excellent! All scheduled orders have delivery notes issued. No pending orders!</td></tr>';

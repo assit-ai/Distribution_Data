@@ -17,16 +17,18 @@ set /p END_DATE="End Date [DD/MM/YYYY]: "
 
 echo.
 echo Select Category to Sync:
-echo   1. All Categories (Frozen + Chicken + Egg) [Default]
+echo   1. All Categories (Frozen + Chicken + Egg + Tea) [Default]
 echo   2. Frozen Foods
 echo   3. Process Chicken
 echo   4. Branded Eggs
-set /p CAT_CHOICE="Enter choice [1-4, Default=1]: "
+echo   5. Tea
+set /p CAT_CHOICE="Enter choice [1-5, Default=1]: "
 
 set CAT_ARG=all
 if "%CAT_CHOICE%"=="2" set CAT_ARG=Frozen
 if "%CAT_CHOICE%"=="3" set CAT_ARG=Chicken
 if "%CAT_CHOICE%"=="4" set CAT_ARG=Egg
+if "%CAT_CHOICE%"=="5" set CAT_ARG=Tea
 
 echo.
 echo Running Automated Poloxy Extraction (Category: %CAT_ARG%)...
