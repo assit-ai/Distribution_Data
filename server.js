@@ -437,18 +437,38 @@ app.delete('/api/entries', auth, wrap(async (req, res) => {
   res.json({ ok: true });
 }));
 
-// ---------- bulk entries (Stock from Poloxy / Orders / Combined) ----------
+// ---------- bulk entries (Stock from Poloxy / Orders / Multi-date Combined) ----------
 app.post('/api/bulk/entries', auth, wrap(async (req, res) => {
   const { date, items } = req.body;
-  if (!DATE.test(String(date || ''))) return res.status(400).json({ error: 'Invalid date format' });
   if (!Array.isArray(items) || !items.length) return res.status(400).json({ error: 'Data list is empty' });
 
   const allowed = await allowedDepots(req.user);
   const allCats = await getAllCategories();
   let updated = 0, skipped = 0;
   const skippedDetails = [];
+  const datesUpdated = new Set();
 
   for (const it of items) {
+    // Determine row date (support item date, entry_date, or fallback to top-level date)
+    let rawDate = String(it.date || it.entry_date || date || '').trim();
+    if (!rawDate) {
+      skipped++;
+      skippedDetails.push('Missing date for row');
+      continue;
+    }
+
+    // Normalize DD/MM/YYYY or DD-MM-YYYY to YYYY-MM-DD
+    if (/^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4}$/.test(rawDate)) {
+      const p = rawDate.split(/[\/\-]/);
+      rawDate = `${p[2]}-${p[1].padStart(2, '0')}-${p[0].padStart(2, '0')}`;
+    }
+
+    if (!DATE.test(rawDate)) {
+      skipped++;
+      skippedDetails.push(`Invalid date format: "${rawDate}"`);
+      continue;
+    }
+
     const rawDepot = String(it.depot || '').trim();
     const depot = findDepot(allowed, rawDepot) || (req.user.role === 'admin' ? rawDepot : null);
     if (!depot) {
@@ -473,32 +493,47 @@ app.post('/api/bulk/entries', auth, wrap(async (req, res) => {
     const finalOrders = o != null ? (cat === 'Chicken' ? o : Math.round(o)) : null;
     const finalDelivered = v != null ? (cat === 'Chicken' ? v : Math.round(v)) : null;
 
+    const pendingOrders = it.pending_orders != null ? parseInt(it.pending_orders, 10) : ((finalOrders != null && finalDelivered != null && finalOrders > finalDelivered) ? 1 : null);
+    const totalOrdersCount = it.total_orders_count != null ? parseInt(it.total_orders_count, 10) : ((finalOrders != null && finalOrders > 0) ? 1 : null);
+    const pendingSoNums = it.pending_so_numbers ? String(it.pending_so_numbers).trim() : null;
+    const remarks = it.remarks ? String(it.remarks).trim() : null;
+
     await pool.query(`
-      insert into entries(entry_date, depot, category, orders, delivered, stock, avg_daily, updated_by, updated_at)
-      values($1, $2, $3, coalesce($4, 0), coalesce($5, 0), coalesce($6, 0), coalesce($7, 0), $8, now())
+      insert into entries(entry_date, depot, category, orders, delivered, stock, avg_daily, pending_orders, total_orders_count, pending_so_numbers, remarks, updated_by, updated_at)
+      values($1, $2, $3, coalesce($4, 0), coalesce($5, 0), coalesce($6, 0), coalesce($7, 0), coalesce($8, 0), coalesce($9, 0), coalesce($10, ''), coalesce($11, ''), $12, now())
       on conflict(entry_date, depot, category) do update set
         orders = coalesce($4, entries.orders),
         delivered = coalesce($5, entries.delivered),
         stock = coalesce($6, entries.stock),
         avg_daily = coalesce($7, entries.avg_daily),
-        updated_by = $8,
+        pending_orders = coalesce($8, entries.pending_orders),
+        total_orders_count = coalesce($9, entries.total_orders_count),
+        pending_so_numbers = coalesce($10, entries.pending_so_numbers),
+        remarks = coalesce($11, entries.remarks),
+        updated_by = $12,
         updated_at = now()
-    `, [date, depot, cat, finalOrders, finalDelivered, s, a, req.user.id]);
+    `, [rawDate, depot, cat, finalOrders, finalDelivered, s, a, pendingOrders, totalOrdersCount, pendingSoNums, remarks, req.user.id]);
     updated++;
+    datesUpdated.add(rawDate);
   }
-  res.json({ ok: true, updated, skipped, skippedDetails, date });
+  res.json({ ok: true, updated, skipped, skippedDetails, dates_updated: Array.from(datesUpdated), date });
 }));
 
 // ---------- Poloxy ERP Automated Sync Route (Triggered from Web Portal / Mobile) ----------
 app.post('/api/admin/sync-erp', auth, admin, wrap(async (req, res) => {
-  const { date, category } = req.body;
+  const { date, toDate, category } = req.body;
   if (!date) return res.status(400).json({ error: 'Date is required (YYYY-MM-DD or DD/MM/YYYY)' });
 
-  let ddmmyyyy = date;
-  if (/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-    const [y, m, d] = date.split('-');
-    ddmmyyyy = `${d}/${m}/${y}`;
+  function toDDMMYYYY(str) {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+      const [y, m, d] = str.split('-');
+      return `${d}/${m}/${y}`;
+    }
+    return str;
   }
+
+  const startDdmmyyyy = toDDMMYYYY(date);
+  const endDdmmyyyy = toDate ? toDDMMYYYY(toDate) : startDdmmyyyy;
 
   const catArg = category || 'all';
   const scriptPath = path.join(__dirname, 'sync_frozen_daily.py');
@@ -508,7 +543,7 @@ app.post('/api/admin/sync-erp', auth, admin, wrap(async (req, res) => {
   }
 
   const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
-  const args = [scriptPath, ddmmyyyy, ddmmyyyy, `--category=${catArg}`, '--json'];
+  const args = [scriptPath, startDdmmyyyy, endDdmmyyyy, `--category=${catArg}`, '--json'];
 
   let output = '';
   let errOutput = '';

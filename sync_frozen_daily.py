@@ -780,19 +780,34 @@ def run_sync_pipeline(start_date_str=None, end_date_str=None, category_filter='a
         cats_to_run = ['Frozen', 'Chicken', 'Egg']
 
     all_results = []
-    for ckey in cats_to_run:
-        if ckey in configs:
-            res = run_category_sync(client, ckey, configs[ckey], start_date_str, end_date_str, start_dt, end_dt)
-            all_results.extend(res)
+    if start_dt == end_dt:
+        for ckey in cats_to_run:
+            if ckey in configs:
+                res = run_category_sync(client, ckey, configs[ckey], start_date_str, end_date_str, start_dt, end_dt)
+                all_results.extend(res)
+    else:
+        num_days = (end_dt - start_dt).days + 1
+        print(f"\n[*] Multi-date Range Detected: {num_days} Days ({start_date_str} to {end_date_str})")
+        print(f"[*] Extracting day-by-day records so each date displays its exact data in the portal...")
+        curr_dt = start_dt
+        while curr_dt <= end_dt:
+            curr_str = curr_dt.strftime("%d/%m/%Y")
+            print(f"\n>>>> [SYNCING DATE: {curr_str}] <<<<")
+            for ckey in cats_to_run:
+                if ckey in configs:
+                    res = run_category_sync(client, ckey, configs[ckey], curr_str, curr_str, curr_dt, curr_dt)
+                    all_results.extend(res)
+            curr_dt += timedelta(days=1)
 
     # Export Master Excel Template (Optional)
     if export_excel and openpyxl:
         wb = openpyxl.Workbook()
         ws = wb.active
         ws.title = "Master_Daily"
-        ws.append(["Depot", "Category", "Unit", "Orders", "Delivered", "Pending", "Stock", "Avg_Daily", "Stock_Cover"])
+        ws.append(["Date", "Depot", "Category", "Unit", "Orders", "Delivered", "Pending", "Stock", "Avg_Daily", "Stock_Cover"])
         for r in all_results:
             ws.append([
+                r.get('entry_date', end_dt.strftime("%Y-%m-%d")),
                 r['depot'],
                 r['category'],
                 r.get('unit', 'Qty'),
@@ -803,7 +818,7 @@ def run_sync_pipeline(start_date_str=None, end_date_str=None, category_filter='a
                 r['avg_daily'],
                 r['stock_cover']
             ])
-        date_tag = end_dt.strftime("%Y-%m-%d")
+        date_tag = f"{start_dt.strftime('%Y%m%d')}_{end_dt.strftime('%Y%m%d')}" if start_dt != end_dt else end_dt.strftime("%Y-%m-%d")
         out_excel = f"Master_Daily_Combined_{date_tag}.xlsx"
         wb.save(out_excel)
         print(f"\n[OK] Ready Master Excel generated: {out_excel}")

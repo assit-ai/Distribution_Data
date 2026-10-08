@@ -1214,6 +1214,7 @@ Savar	Egg	42000	7500" oninput="parsePastedTable()"></textarea>
               <thead>
                 <tr>
                   <th>#</th>
+                  <th>Date</th>
                   <th>Depot</th>
                   <th>Category</th>
                   <th class="num">Orders</th>
@@ -1891,10 +1892,14 @@ Savar	Egg	42000	7500" oninput="parsePastedTable()"></textarea>
         </div>
       </div>
 
-      <div class="g" style="grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:14px;">
+      <div class="g" style="grid-template-columns: 1fr 1fr 1.2fr; gap:10px; margin-bottom:14px;">
         <div>
-          <label style="font-weight:600; font-size:12px;">Sync Date *</label>
+          <label style="font-weight:600; font-size:12px;">From Date *</label>
           <input type="date" id="erp_sync_date" style="padding:8px 10px; width:100%;">
+        </div>
+        <div>
+          <label style="font-weight:600; font-size:12px;">To Date (Optional)</label>
+          <input type="date" id="erp_sync_to_date" style="padding:8px 10px; width:100%;">
         </div>
         <div>
           <label style="font-weight:600; font-size:12px;">Product Category *</label>
@@ -4290,11 +4295,43 @@ function detectField(obj, candidates) {
   return null;
 }
 
+function parseToISODate(val) {
+  if (!val) return null;
+  // If Excel numeric serial date (e.g. 45573)
+  if (typeof val === 'number' || (!isNaN(val) && Number(val) > 30000 && Number(val) < 60000)) {
+    try {
+      const d = new Date(Math.round((Number(val) - 25569) * 86400 * 1000));
+      if (!isNaN(d.getTime())) return d.toISOString().slice(0, 10);
+    } catch (e) {}
+  }
+  const s = String(val).trim();
+  // YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  // DD/MM/YYYY or DD-MM-YYYY
+  if (/^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4}$/.test(s)) {
+    const p = s.split(/[\/\-]/);
+    return `${p[2]}-${p[1].padStart(2, '0')}-${p[0].padStart(2, '0')}`;
+  }
+  // Try standard Date.parse
+  const parsed = new Date(s);
+  if (!isNaN(parsed.getTime())) {
+    const y = parsed.getFullYear();
+    const m = String(parsed.getMonth() + 1).padStart(2, '0');
+    const d = String(parsed.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
+  return null;
+}
+
 function processParsedJsonRows(rows) {
   parsedBulkRows = [];
   const knownDepots = deps.length ? deps : allowed();
 
   rows.forEach((r, idx) => {
+    // 0. Detect Date if present in row
+    const rawDate = detectField(r, ['date', 'entrydate', 'entry_date', 'orderdate', 'deliverydate', 'tarikh', 'তারিখ', 'দিন']);
+    const normalizedRowDate = rawDate ? parseToISODate(rawDate) : null;
+
     // 1. Detect Depot (Broad ERP synonyms)
     const rawDepot = detectField(r, ['depot', 'depotname', 'location', 'warehouse', 'branch', 'plant', 'site', 'ডিপো']);
     const matchedDepot = knownDepots.find(d => lc(d) === lc(rawDepot)) || rawDepot;
@@ -4312,6 +4349,7 @@ function processParsedJsonRows(rows) {
     if (matchedDepot) {
       parsedBulkRows.push({
         id: idx + 1,
+        date: normalizedRowDate,
         depot: matchedDepot,
         category: matchedCat || (CATS[0] || 'Frozen'),
         orders: rawOrders !== null && rawOrders !== '' ? num(rawOrders) : null,
@@ -4330,9 +4368,12 @@ function renderBulkPreview() {
   $('btn-commit-bulk').disabled = parsedBulkRows.length === 0;
   $('bulk-preview-wrap').classList.toggle('hid', parsedBulkRows.length === 0);
 
-  $('bulk-preview-tb').innerHTML = parsedBulkRows.slice(0, 50).map((r, i) => `
+  const defaultDate = ($('bulk_target_date') && $('bulk_target_date').value) ? $('bulk_target_date').value : ($('date') ? $('date').value : '–');
+
+  $('bulk-preview-tb').innerHTML = parsedBulkRows.slice(0, 100).map((r, i) => `
     <tr>
       <td>${i + 1}</td>
+      <td>${r.date ? `<b>${esc(r.date)}</b>` : `<span class="sub" title="Will use target date: ${esc(defaultDate)}">${esc(defaultDate)}</span>`}</td>
       <td><b>${esc(r.depot)}</b></td>
       <td>${esc(r.category)}</td>
       <td class="num">${r.orders != null ? fmt(r.orders) : '—'}</td>
@@ -4346,8 +4387,7 @@ function renderBulkPreview() {
 
 async function processAndCommitBulk() {
   if (!parsedBulkRows.length) return msg('No parsed rows to save. Please upload a file, paste Excel data, or run Poloxy Auto Sync first.');
-  const d = ($('bulk_target_date') && $('bulk_target_date').value) ? $('bulk_target_date').value : $('date').value;
-  if (!d) return msg('Please select a Target Date for Manual Upload');
+  const defaultDate = ($('bulk_target_date') && $('bulk_target_date').value) ? $('bulk_target_date').value : ($('date') ? $('date').value : today());
   const mode = $('bulk-mode').value;
   const statusEl = $('bulk_commit_msg');
 
@@ -4361,7 +4401,11 @@ async function processAndCommitBulk() {
   }
 
   const payload = parsedBulkRows.map(r => {
-    const item = { depot: r.depot, category: r.category };
+    const item = {
+      date: r.date || defaultDate,
+      depot: r.depot,
+      category: r.category
+    };
     if (mode === 'all' || mode === 'orders') {
       if (r.orders != null) item.orders = r.orders;
       if (r.delivered != null) item.delivered = r.delivered;
@@ -4374,15 +4418,17 @@ async function processAndCommitBulk() {
   });
 
   try {
-    const res = await api('POST', '/api/bulk/entries', { date: d, items: payload });
+    const res = await api('POST', '/api/bulk/entries', { date: defaultDate, items: payload });
     if (statusEl) {
       if (res.updated > 0) {
+        const datesCount = res.dates_updated?.length || 1;
+        const datesSummary = res.dates_updated?.length > 1 ? `across ${datesCount} dates (${res.dates_updated.slice(0, 5).join(', ')}${datesCount > 5 ? '...' : ''})` : `for Date: ${res.date || defaultDate}`;
         statusEl.innerHTML = `
           <div style="background:rgba(34, 197, 94, 0.15); border:1.5px solid var(--ok); color:var(--ok); padding:12px 16px; border-radius:8px; font-size:13px; font-weight:600; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-top:8px;">
-            <span>✓ Successfully saved ${res.updated} rows to database for Date: ${d}!</span>
+            <span>✓ Successfully saved ${res.updated} rows ${datesSummary}!</span>
             <button type="button" class="p sm" onclick="setTab('dash')" style="font-size:12px; padding:7px 14px; font-weight:700; cursor:pointer; background:var(--ac); color:#fff; border:none; border-radius:6px;">📊 View in Dashboard →</button>
           </div>
-          ${res.skipped > 0 ? `<div style="color:var(--warn); font-size:12px; margin-top:6px;">⚠️ Note: ${res.skipped} rows skipped (depot or category not recognized: ${esc(res.skippedDetails?.slice(0, 3).join(', '))})</div>` : ''}
+          ${res.skipped > 0 ? `<div style="color:var(--warn); font-size:12px; margin-top:6px;">⚠️ Note: ${res.skipped} rows skipped (details: ${esc(res.skippedDetails?.slice(0, 3).join(', '))})</div>` : ''}
         `;
       } else {
         statusEl.innerHTML = `
@@ -4854,7 +4900,9 @@ async function delErpDepot(id) {
 // ========================================================
 function openErpSyncModal() {
   const dVal = $('date') ? $('date').value : today();
+  const toDVal = ($('date_to') && $('date_to').value) ? $('date_to').value : dVal;
   if ($('erp_sync_date')) $('erp_sync_date').value = dVal;
+  if ($('erp_sync_to_date')) $('erp_sync_to_date').value = toDVal;
   const sBox = $('erp_sync_status_box');
   if (sBox) sBox.style.display = 'none';
   const btn = $('btn_run_erp_sync');
@@ -4871,6 +4919,7 @@ function closeErpSyncModal() {
 
 async function startErpSyncNow() {
   const dVal = $('erp_sync_date') ? $('erp_sync_date').value : '';
+  const toDVal = ($('erp_sync_to_date') && $('erp_sync_to_date').value) ? $('erp_sync_to_date').value : dVal;
   const cVal = $('erp_sync_cat') ? $('erp_sync_cat').value : 'all';
   const btn = $('btn_run_erp_sync');
   const sBox = $('erp_sync_status_box');
@@ -4889,17 +4938,18 @@ async function startErpSyncNow() {
     sBox.style.background = 'var(--primary-bg)';
     sBox.style.border = '1px solid var(--primary)';
     sBox.style.color = 'var(--primary)';
+    const dateRangeLabel = dVal === toDVal ? `<b>${esc(dVal)}</b>` : `<b>${esc(dVal)}</b> to <b>${esc(toDVal)}</b>`;
     sBox.innerHTML = `
       <div style="font-weight:700; font-size:13px; margin-bottom:4px;">⏳ Connecting to Poloxy ERP...</div>
-      <div>• Date: <b>${esc(dVal)}</b> | Category: <b>${esc(cVal)}</b></div>
+      <div>• Date Range: ${dateRangeLabel} | Category: <b>${esc(cVal)}</b></div>
       <div style="margin-top:4px; font-size:12px; color:var(--tx);">
-        অর্ডার, ডেলিভারি ও পেন্ডিং হিসাব করা হচ্ছে। অনুগ্রহ করে ১০-২৫ সেকেন্ড অপেক্ষা করুন...
+        প্রতিটি দিনের সেলস অর্ডার, ডেলিভারি ও পেন্ডিং আলাদাভাবে হিসাব করা হচ্ছে। অনুগ্রহ করে অপেক্ষা করুন...
       </div>
     `;
   }
 
   try {
-    const res = await api('POST', '/api/admin/sync-erp', { date: dVal, category: cVal });
+    const res = await api('POST', '/api/admin/sync-erp', { date: dVal, toDate: toDVal, category: cVal });
     if (res.ok) {
       if (sBox) {
         sBox.style.background = 'var(--ok-bg)';
