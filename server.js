@@ -84,6 +84,8 @@ async function init() {
       updated_at timestamptz not null default now(), unique(entry_date, depot));
     alter table reports add column if not exists top_depot text not null default '';
     alter table reports add column if not exists low_depot text not null default '';
+    alter table reports add column if not exists category_targets jsonb not null default '{}';
+    alter table reports add column if not exists delivery_amount numeric not null default 0;
     alter table categories add column if not exists unit text not null default 'Qty';
     alter table users add column if not exists categories text[] not null default '{}';
     alter table depot_vehicles add column if not exists under_maintenance int not null default 0;
@@ -148,7 +150,7 @@ async function init() {
     // Frozen
     { category: 'Frozen', depot_code: 'tejgaon02', depot_name: '02. Frozen Foods Tejgaon Depot', godown_name: '02. Frozen Foods Tejgaon Depot', godown_id: 'G206', ref_patterns: ['02.TG', '02. TEJGAON', '02.TG-FZ', '02 TG', 'TEJGAON'], is_default: false },
     { category: 'Frozen', depot_code: 'ctg02', depot_name: '02. Frozen Foods Chittagong Depot', godown_name: '02. Frozen Foods Chittagong Depot', godown_id: 'G7', ref_patterns: ['02.CTG', '02. CTG', '02 CTG', '02.CHITTAGONG', 'CHITTAGONG'], is_default: false },
-    { category: 'Frozen', depot_code: 'ashulia02', depot_name: '02. Frozen Foods Factory Godown', godown_name: '02. Frozen Foods Factory Godown', godown_id: 'G5', ref_patterns: ['02. FROZEN FOOD', '02.FROZEN FOOD', '02 FACTORY', '02.FACTORY', '02.ASH', 'ASHULIA'], is_default: false },
+    { category: 'Frozen', depot_code: 'ashulia02', depot_name: '02. Frozen Foods Factory Godown', godown_name: '02. Frozen Foods Factory Godown', godown_id: 'G5', ref_patterns: ['02. FROZEN FOOD', '02.FROZEN FOOD', '02 FACTORY', '02.FACTORY', '02.ASH', 'ASHULIA', 'EXPORT', 'CK FROZEN', 'CK FROZEN FOOD', '02.EXPORT', '02 EXPORT'], is_default: true },
     { category: 'Frozen', depot_code: 'mohakhali02', depot_name: '02. Frozen Foods HO Godown', godown_name: '02. Frozen Foods HO Godown', godown_id: 'G6', ref_patterns: ['02.HO', '02. HO', '02 HO', '02.MHK', 'MOHAKHALI'], is_default: false },
     { category: 'Frozen', depot_code: 'jessore02', depot_name: '02. Frozen Foods Jessore Depot', godown_name: '02. Frozen Foods Jessore Depot', godown_id: 'G256', ref_patterns: ['02 JD', '02.JD', '02.JESSORE', '02. JESSORE', 'JESSORE'], is_default: false },
     { category: 'Frozen', depot_code: 'sylhet02', depot_name: '02. Frozen Foods Sylhet Depot', godown_name: '02. Frozen Foods Sylhet Depot', godown_id: 'G167', ref_patterns: ['02.SYLHET', '02. SYLHET', '02 SYLHET', '02.SYL', 'SYLHET'], is_default: false },
@@ -171,7 +173,9 @@ async function init() {
       on conflict(category, depot_code) do update set
         depot_name = excluded.depot_name,
         godown_name = excluded.godown_name,
-        godown_id = excluded.godown_id
+        godown_id = excluded.godown_id,
+        ref_patterns = excluded.ref_patterns,
+        is_default = excluded.is_default
     `, [m.category, m.depot_code, m.depot_name, m.godown_name, m.godown_id, m.ref_patterns, m.is_default]);
   }
   await syncDepotMappingsToFile();
@@ -485,6 +489,100 @@ app.post('/api/bulk/entries', auth, wrap(async (req, res) => {
   res.json({ ok: true, updated, skipped, skippedDetails, date });
 }));
 
+// ---------- Poloxy ERP Automated Sync Route (Triggered from Web Portal / Mobile) ----------
+app.post('/api/admin/sync-erp', auth, admin, wrap(async (req, res) => {
+  const { date, category } = req.body;
+  if (!date) return res.status(400).json({ error: 'Date is required (YYYY-MM-DD or DD/MM/YYYY)' });
+
+  let ddmmyyyy = date;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    const [y, m, d] = date.split('-');
+    ddmmyyyy = `${d}/${m}/${y}`;
+  }
+
+  const catArg = category || 'all';
+  const scriptPath = path.join(__dirname, 'sync_frozen_daily.py');
+
+  if (!fs.existsSync(scriptPath)) {
+    return res.status(500).json({ error: 'sync_frozen_daily.py script not found on server' });
+  }
+
+  const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
+  const args = [scriptPath, ddmmyyyy, ddmmyyyy, `--category=${catArg}`, '--json'];
+
+  let output = '';
+  let errOutput = '';
+  const proc = spawn(pythonCmd, args, { cwd: __dirname });
+
+  proc.stdout.on('data', d => { output += d.toString(); });
+  proc.stderr.on('data', d => { errOutput += d.toString(); });
+
+  proc.on('close', async (code) => {
+    if (code !== 0) {
+      console.error('ERP Sync error:', errOutput);
+      return res.status(500).json({ error: `ERP Sync process exited with code ${code}`, details: errOutput.slice(-800) });
+    }
+
+    let jsonMatch = output.match(/__JSON_START__([\s\S]*?)__JSON_END__/);
+    let syncResults = [];
+    if (jsonMatch) {
+      try {
+        syncResults = JSON.parse(jsonMatch[1]);
+      } catch (err) {
+        console.error('Failed to parse sync JSON:', err);
+      }
+    }
+
+    if (!syncResults.length) {
+      return res.json({ ok: true, count: 0, message: 'Sync completed, but no records returned', raw: output.slice(-500) });
+    }
+
+    let saved = 0;
+    let totalDeliveryAmt = 0;
+    for (const item of syncResults) {
+      const eDate = item.entry_date;
+      const depot = item.depot;
+      const cat = item.category;
+      const orders = Number(item.orders) || 0;
+      const delivered = Number(item.delivered) || 0;
+      const stock = Number(item.stock) || 0;
+      const avg = Number(item.avg_daily) || 0;
+      const pendingOrders = Number(item.pending_orders) || 0;
+      const totalOrdersCount = Number(item.total_orders_count) || 0;
+      const pendingSoNums = String(item.pending_so_numbers || '');
+      const remarks = String(item.remarks || '');
+      const delAmt = Number(item.delivery_amount) || 0;
+      totalDeliveryAmt += delAmt;
+
+      await pool.query(`
+        insert into entries(entry_date, depot, category, orders, delivered, stock, avg_daily, pending_orders, total_orders_count, pending_so_numbers, remarks, updated_by, updated_at)
+        values($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, now())
+        on conflict(entry_date, depot, category) do update set
+          orders=$4, delivered=$5, stock=$6, avg_daily=$7, pending_orders=$8, total_orders_count=$9, pending_so_numbers=$10, remarks=$11, updated_by=$12, updated_at=now()
+      `, [eDate, depot, cat, orders, delivered, stock, avg, pendingOrders, totalOrdersCount, pendingSoNums, remarks, req.user.id]);
+      saved++;
+    }
+
+    if (totalDeliveryAmt > 0 && syncResults[0]?.entry_date) {
+      try {
+        await pool.query(`
+          insert into reports(report_date, delivery_amount, updated_at)
+          values($1, $2, now())
+          on conflict(report_date) do update set delivery_amount=$2, updated_at=now()
+        `, [syncResults[0].entry_date, totalDeliveryAmt]);
+      } catch (re) {}
+    }
+
+    res.json({
+      ok: true,
+      count: saved,
+      total_delivery_amount: totalDeliveryAmt,
+      message: `Successfully synchronized and saved ${saved} depot records from ERP!`,
+      summary: syncResults
+    });
+  });
+}));
+
 // ---------- vehicles tracking ----------
 app.get('/api/vehicles', auth, wrap(async (req, res) => {
   const d = String(req.query.date || '');
@@ -725,6 +823,18 @@ app.post('/api/auto-sync', auth, admin, wrap(async (req, res) => {
         saved++;
       }
 
+      // Calculate and auto-save delivery_amount and today_sales in reports table
+      const totalDeliveryAmount = items.reduce((acc, it) => acc + (Number(it.delivery_amount) || 0), 0);
+      if (totalDeliveryAmount > 0) {
+        await pool.query(`
+          insert into reports(report_date, today_sales, delivery_amount)
+          values($1, $2, $2)
+          on conflict(report_date) do update set
+            today_sales = case when reports.today_sales = 0 or reports.today_sales is null then excluded.today_sales else reports.today_sales end,
+            delivery_amount = excluded.delivery_amount
+        `, [endDate, totalDeliveryAmount]);
+      }
+
       res.json({
         ok: true,
         date: endDate,
@@ -880,9 +990,9 @@ app.get('/api/report', auth, wrap(async (req, res) => {
   if (!DATE.test(from) || !DATE.test(to)) return res.status(400).json({ error: 'Invalid date format' });
 
   if (from === to) {
-    const r = await pool.query(`select head, today_sales::float8, today_target::float8, mtd_sales::float8, mtd_target::float8, top_depot, low_depot, issues
+    const r = await pool.query(`select head, today_sales::float8, today_target::float8, mtd_sales::float8, mtd_target::float8, coalesce(delivery_amount, 0)::float8 as delivery_amount, coalesce(category_targets, '{}'::jsonb) as category_targets, top_depot, low_depot, issues
       from reports where report_date=$1`, [from]);
-    return res.json({ report: r.rows[0] || { head: 'Atikur', today_sales: 0, today_target: 0, mtd_sales: 0, mtd_target: 0, top_depot: '', low_depot: '', issues: '' } });
+    return res.json({ report: r.rows[0] || { head: 'Atikur', today_sales: 0, today_target: 0, mtd_sales: 0, mtd_target: 0, delivery_amount: 0, category_targets: {}, top_depot: '', low_depot: '', issues: '' } });
   }
 
   // Date range aggregation for overview
@@ -893,13 +1003,15 @@ app.get('/api/report', auth, wrap(async (req, res) => {
       coalesce(sum(today_target), 0)::float8 as today_target,
       coalesce(max(mtd_sales), 0)::float8 as mtd_sales,
       coalesce(max(mtd_target), 0)::float8 as mtd_target,
+      coalesce(sum(delivery_amount), 0)::float8 as delivery_amount,
+      (select coalesce(category_targets, '{}'::jsonb) from reports where report_date=$2 limit 1) as category_targets,
       max(top_depot) as top_depot,
       max(low_depot) as low_depot,
       string_agg(distinct issues, ' | ') as issues
     from reports
     where report_date between $1 and $2
   `, [from, to]);
-  res.json({ report: r.rows[0] || { head: 'Atikur', today_sales: 0, today_target: 0, mtd_sales: 0, mtd_target: 0, top_depot: '', low_depot: '', issues: '' } });
+  res.json({ report: r.rows[0] || { head: 'Atikur', today_sales: 0, today_target: 0, mtd_sales: 0, mtd_target: 0, delivery_amount: 0, category_targets: {}, top_depot: '', low_depot: '', issues: '' } });
 }));
 
 app.put('/api/report', auth, admin, wrap(async (req, res) => {
@@ -907,9 +1019,12 @@ app.put('/api/report', auth, admin, wrap(async (req, res) => {
   if (!DATE.test(date)) return res.status(400).json({ error: 'Invalid date format' });
   const n = [b.today_sales, b.today_target, b.mtd_sales, b.mtd_target].map(v => nonNeg(v || 0));
   if (n.includes(null)) return res.status(400).json({ error: 'Invalid numerical values' });
-  await pool.query(`insert into reports(report_date,head,today_sales,today_target,mtd_sales,mtd_target,top_depot,low_depot,issues) values($1,$2,$3,$4,$5,$6,$7,$8,$9)
-    on conflict(report_date) do update set head=$2,today_sales=$3,today_target=$4,mtd_sales=$5,mtd_target=$6,top_depot=$7,low_depot=$8,issues=$9`,
-    [date, String(b.head || 'Atikur').slice(0, 100), ...n, String(b.top_depot || '').slice(0, 100), String(b.low_depot || '').slice(0, 100), String(b.issues || '').slice(0, 5000)]);
+  const delivery_amt = nonNeg(b.delivery_amount) || 0;
+  const cat_targets = (b.category_targets && typeof b.category_targets === 'object') ? JSON.stringify(b.category_targets) : '{}';
+
+  await pool.query(`insert into reports(report_date,head,today_sales,today_target,mtd_sales,mtd_target,delivery_amount,category_targets,top_depot,low_depot,issues) values($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11)
+    on conflict(report_date) do update set head=$2,today_sales=$3,today_target=$4,mtd_sales=$5,mtd_target=$6,delivery_amount=$7,category_targets=$8::jsonb,top_depot=$9,low_depot=$10,issues=$11`,
+    [date, String(b.head || 'Atikur').slice(0, 100), ...n, delivery_amt, cat_targets, String(b.top_depot || '').slice(0, 100), String(b.low_depot || '').slice(0, 100), String(b.issues || '').slice(0, 5000)]);
   res.json({ ok: true });
 }));
 

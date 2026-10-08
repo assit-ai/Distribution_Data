@@ -30,13 +30,21 @@ if "%CAT_CHOICE%"=="4" set CAT_ARG=Egg
 
 echo.
 echo Running Automated Poloxy Extraction (Category: %CAT_ARG%)...
+
+set RUNNER=python sync_frozen_daily.py
+if exist "Paragon_ERP_Sync.exe" (
+    set RUNNER=Paragon_ERP_Sync.exe
+) else if exist "..\Paragon_ERP_Sync.exe" (
+    set RUNNER=..\Paragon_ERP_Sync.exe
+)
+
 if "%START_DATE%"=="" (
-    python sync_frozen_daily.py --category=%CAT_ARG%
+    %RUNNER% --category=%CAT_ARG%
 ) else (
     if "%END_DATE%"=="" (
-        python sync_frozen_daily.py %START_DATE% --category=%CAT_ARG%
+        %RUNNER% %START_DATE% --category=%CAT_ARG%
     ) else (
-        python sync_frozen_daily.py %START_DATE% %END_DATE% --category=%CAT_ARG%
+        %RUNNER% %START_DATE% %END_DATE% --category=%CAT_ARG%
     )
 )
 

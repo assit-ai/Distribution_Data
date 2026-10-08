@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f766e" />
+      <stop offset="100%" stop-color="#115e59" />
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#000" flood-opacity="0.25"/>
+    </filter>
+  </defs>
+  <rect width="512" height="512" rx="128" fill="url(#grad)" />
+  <g filter="url(#shadow)" fill="#ffffff" transform="translate(64, 80) scale(0.75)">
+    <!-- Delivery Van / Fleet Symbol -->
+    <path d="M420 280h-30V190c0-11-9-20-20-20H50c-11 0-20 9-20 20v190c0 11 9 20 20 20h26c7 28 32 50 64 50s57-22 64-50h142c7 28 32 50 64 50s57-22 64-50h26c11 0 20-9 20-20v-70l-60-70zm-50-60v50H260V190h100c5.5 0 10 4.5 10 10v20zm-280 200c-17 0-30-13-30-30s13-30 30-30 30 13 30 30-13 30-30 30zm270 0c-17 0-30-13-30-30s13-30 30-30 30 13 30 30-13 30-30 30zm40-100h-30c-7-28-32-50-64-50s-57 22-64 50H210c-7-28-32-50-64-50s-57 22-64 50H50V190h190v90h150v-40l40 50v40z"/>
+    <!-- Analytics / Speed Trend Arrow -->
+    <circle cx="210" cy="110" r="14" fill="#34d399"/>
+    <path d="M120 160l70-50 60 35 110-85" stroke="#34d399" stroke-width="24" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+    <polygon points="360,60 360,110 310,60" fill="#34d399"/>
+  </g>
+  <text x="256" y="440" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, sans-serif" font-size="34" font-weight="800" fill="#ffffff" text-anchor="middle" letter-spacing="2">PARAGON OPS</text>
+</svg>

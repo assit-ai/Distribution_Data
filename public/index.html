@@ -3,6 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Paragon Ops">
+<meta name="theme-color" content="#0f766e">
+<link rel="manifest" href="/manifest.json">
+<link rel="apple-touch-icon" href="/icon.svg">
+<link rel="icon" type="image/svg+xml" href="/icon.svg">
 <title>Distribution & Fleet Operations Portal</title>
 <!-- SheetJS for local Excel/CSV client-side parsing without server overhead -->
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
@@ -572,7 +579,8 @@ tr:hover td { background: rgba(0,0,0,0.015); }
           <span class="sub" style="font-size:12px;">Active Date: <b id="dash_active_date_label" style="color:var(--ac)">–</b></span>
         </div>
         <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
-          <button class="sm p" onclick="setTab('bulk')" style="font-size:12px;">⚡ Poloxy Auto Sync</button>
+          <button class="sm p" onclick="openErpSyncModal()" style="font-size:12px; font-weight:700; background:var(--ok); border-color:var(--ok);" title="Zero-installation Poloxy ERP sync directly from cloud/browser">⚡ ERP Auto Sync (Cloud/Mobile)</button>
+          <button class="sm s" onclick="setTab('bulk')" style="font-size:12px;" title="Upload Excel or paste rows manually">📂 Manual Excel Upload</button>
           <button class="sm" onclick="setTab('fleet')" style="font-size:12px;">🚚 Fleet Logs</button>
           <button class="sm bad" onclick="openClearDataModal()" style="font-size:12px; font-weight:700; background:var(--bad-bg); color:var(--bad); border:1px solid rgba(239, 68, 68, 0.4); padding:5px 12px; border-radius:6px; cursor:pointer;" title="Clear/delete data for specific date or date range">🗑️ Clear Data</button>
         </div>
@@ -580,12 +588,12 @@ tr:hover td { background: rgba(0,0,0,0.015); }
 
       <!-- KPI Metric Cards (All with Clickable Hyperlink Drill-downs) -->
       <div class="kpi-grid">
-        <!-- 1. Today GT Frozen Sales (Clickable Hyperlink to Sales Modal) -->
-        <div class="kpi-card kpi-clickable" onclick="openSalesModal()" title="Click to view Today GT Frozen Sales, Target achievement & MTD performance">
-          <div class="kpi-label">Today GT Sales 🔍</div>
+        <!-- 1. Sales & Distribution Performance (Clickable Hyperlink to Sales Modal) -->
+        <div class="kpi-card kpi-clickable" onclick="openSalesModal()" title="Click to view Sales & Distribution Performance, delivery amount & target achievement">
+          <div class="kpi-label">Sales & Distribution Performance 🔍</div>
           <div class="kpi-val" id="kpi-sales">0</div>
           <div class="kpi-sub" id="kpi-sales-ach">Target: 0 (Ach 0%)</div>
-          <div class="kpi-link-hint">🔗 View sales performance →</div>
+          <div class="kpi-link-hint">🔗 View distribution & sales →</div>
         </div>
 
         <!-- 2. Vans On Road (Formula: Total Assigned - Delivery Done - Under Maint) (Clickable Hyperlink) -->
@@ -629,22 +637,62 @@ tr:hover td { background: rgba(0,0,0,0.015); }
         </div>
       </div>
 
-      <!-- Sales Target & Highlights (Admin / Cluster Head) -->
+      <!-- Sales & Distribution Performance & Highlights (Admin / Cluster Head) -->
       <div class="card adm">
-        <div class="card-header">
-          <div class="card-title">📈 GT Frozen Sales & Highlights</div>
-          <button class="p sm" onclick="saveReportData()">Save Sales & Issues</button>
+        <div class="card-header" style="flex-wrap:wrap; gap:8px;">
+          <div class="card-title">📈 Sales & Distribution Performance & Highlights</div>
+          <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+            <button class="s sm" type="button" onclick="openCategoryTargetsModal()" style="display:inline-flex; align-items:center; gap:5px; font-weight:600;"><span style="font-size:13px;">🎯</span> Set / Upload Category Targets</button>
+            <button class="s sm" type="button" onclick="autoDetectTopLowDepots(true)" style="display:inline-flex; align-items:center; gap:5px; font-weight:600;"><span style="font-size:13px;">✨</span> Auto-Calculate Top/Low Depots</button>
+            <button class="p sm" onclick="saveReportData()">Save Performance & Issues</button>
+          </div>
         </div>
         <div class="g">
           <div><label>Cluster Head Name</label><input id="head" placeholder="Atikur"></div>
-          <div><label>Today Sales</label><input id="st" type="number" min="0" oninput="calcAch()"></div>
-          <div><label>Today Target</label><input id="stt" type="number" min="0" oninput="calcAch()"></div>
-          <div><label>MTD Sales</label><input id="sm" type="number" min="0" oninput="calcAch()"></div>
-          <div><label>MTD Target</label><input id="smt" type="number" min="0" oninput="calcAch()"></div>
+          <div>
+            <label style="display:flex; justify-content:space-between; align-items:center;">
+              <span>Today Delivery Amount (Tk)</span>
+              <span id="st_short_badge" class="badge" style="font-size:11px; background:rgba(37,99,235,0.1); color:var(--primary); font-weight:700;">–</span>
+            </label>
+            <input id="st" type="number" min="0" placeholder="e.g. 3360050" oninput="calcAch()">
+          </div>
+          <div>
+            <label style="display:flex; justify-content:space-between; align-items:center;">
+              <span>Today Target (Tk)</span>
+              <span id="stt_short_badge" class="badge" style="font-size:11px; background:rgba(16,185,129,0.1); color:var(--ok); font-weight:700;">–</span>
+            </label>
+            <input id="stt" type="number" min="0" placeholder="e.g. 2500000" oninput="calcAch()">
+          </div>
+          <div>
+            <label style="display:flex; justify-content:space-between; align-items:center;">
+              <span>MTD Delivery / Sales (Tk)</span>
+              <span id="sm_short_badge" class="badge" style="font-size:11px; background:rgba(37,99,235,0.1); color:var(--primary); font-weight:700;">–</span>
+            </label>
+            <input id="sm" type="number" min="0" placeholder="e.g. 45000000" oninput="calcAch()">
+          </div>
+          <div>
+            <label style="display:flex; justify-content:space-between; align-items:center;">
+              <span>MTD Target (Tk)</span>
+              <span id="smt_short_badge" class="badge" style="font-size:11px; background:rgba(16,185,129,0.1); color:var(--ok); font-weight:700;">–</span>
+            </label>
+            <input id="smt" type="number" min="0" placeholder="e.g. 75000000" oninput="calcAch()">
+          </div>
         </div>
         <div class="g" style="margin-top:10px;">
-          <div><label>Top Performing Depot</label><input id="top_depot" placeholder="e.g. Gazipur"></div>
-          <div><label>Low Performing Depot</label><input id="low_depot" placeholder="e.g. Savar"></div>
+          <div>
+            <label style="display:flex; justify-content:space-between; align-items:center;">
+              <span>Top Performing Depot</span>
+              <span class="sub" style="font-size:11px; color:var(--ok);">✓ সর্বোচ্চ ডেলিভারি ও শতভাগ সরবরাহ</span>
+            </label>
+            <input id="top_depot" placeholder="e.g. Chittagong Depot (2,716 Pkt, 100% Fulfilled)">
+          </div>
+          <div>
+            <label style="display:flex; justify-content:space-between; align-items:center;">
+              <span>Low Performing Depot</span>
+              <span class="sub" style="font-size:11px; color:var(--bad);">⚠️ ডেলিভারি ঘাটতি বা পেন্ডিং ব্যাকলগ</span>
+            </label>
+            <input id="low_depot" placeholder="e.g. Tejgaon Depot (181 Pkt Pending, 40.8% Fulfilled)">
+          </div>
         </div>
         <div style="margin-top:12px;">
           <label>Key Issues / Challenges (1 per line: Issue → Action | Support needed)</label>
@@ -1433,42 +1481,45 @@ Savar	Egg	42000	7500" oninput="parsePastedTable()"></textarea>
 </div>
 
 <!-- ============================================================ -->
-<!-- MODAL: TODAY GT FROZEN SALES DRILL-DOWN (Hyperlink Target) -->
+<!-- MODAL: SALES & DISTRIBUTION PERFORMANCE DRILL-DOWN (Hyperlink Target) -->
 <!-- ============================================================ -->
 <div id="modal-sales" class="modal-overlay hid" onclick="if(event.target===this)closeSalesModal()">
   <div class="modal-box">
     <div class="modal-header">
-      <div class="modal-title">📈 Today GT Frozen Sales & Performance Drill-down</div>
+      <div class="modal-title">📈 Sales & Distribution Performance Drill-down</div>
       <button class="modal-close" onclick="closeSalesModal()">×</button>
     </div>
     <div class="modal-body">
       <!-- High level stats -->
       <div class="kpi-grid" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); margin-bottom:14px;">
         <div class="kpi-card" style="background:var(--bg);">
-          <div class="kpi-label">Today Sales</div>
+          <div class="kpi-label">Today Delivery Amount</div>
           <div class="kpi-val" id="modal_sales_today" style="color:var(--ac)">0</div>
           <div class="kpi-sub" id="modal_sales_today_target">Target: 0 (Ach 0%)</div>
         </div>
         <div class="kpi-card" style="background:var(--bg);">
-          <div class="kpi-label">MTD Sales</div>
+          <div class="kpi-label">MTD Delivery / Sales</div>
           <div class="kpi-val" id="modal_sales_mtd" style="color:var(--primary)">0</div>
           <div class="kpi-sub" id="modal_sales_mtd_target">Target: 0 (Ach 0%)</div>
         </div>
         <div class="kpi-card" style="background:var(--bg);">
           <div class="kpi-label">Top Depot</div>
-          <div class="kpi-val" id="modal_sales_top_depot" style="font-size:18px; color:var(--ok);">—</div>
+          <div class="kpi-val" id="modal_sales_top_depot" style="font-size:16px; color:var(--ok); word-break:break-word;">—</div>
           <div class="kpi-sub">Best performing depot</div>
         </div>
         <div class="kpi-card" style="background:var(--bg);">
           <div class="kpi-label">Low Depot</div>
-          <div class="kpi-val" id="modal_sales_low_depot" style="font-size:18px; color:var(--bad);">—</div>
+          <div class="kpi-val" id="modal_sales_low_depot" style="font-size:16px; color:var(--bad); word-break:break-word;">—</div>
           <div class="kpi-sub">Needs sales focus / support</div>
         </div>
       </div>
 
-      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:8px;">
         <div style="font-weight:600; font-size:13px;">Product Category Closing & Fulfillment:</div>
-        <button class="s sm" onclick="closeSalesModal(); window.scrollTo({top: 420, behavior:'smooth'});">Jump to Edit Sales & Targets</button>
+        <div style="display:flex; gap:8px;">
+          <button class="s sm" onclick="closeSalesModal(); openCategoryTargetsModal();">🎯 Category Targets & MTD</button>
+          <button class="s sm" onclick="closeSalesModal(); window.scrollTo({top: 420, behavior:'smooth'});">Jump to Edit Performance</button>
+        </div>
       </div>
       <div class="table-wrap">
         <table>
@@ -1485,6 +1536,62 @@ Savar	Egg	42000	7500" oninput="parsePastedTable()"></textarea>
           </thead>
           <tbody id="modal_sales_tb"></tbody>
         </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
+<!-- MODAL: CATEGORY-WISE TARGETS & MTD UPLOAD (Hyperlink Target) -->
+<!-- ============================================================ -->
+<div id="modal-category-targets" class="modal-overlay hid" onclick="if(event.target===this)closeCategoryTargetsModal()">
+  <div class="modal-box" style="max-width:940px;">
+    <div class="modal-header">
+      <div class="modal-title">🎯 Product Category-wise Sales Targets & MTD Performance</div>
+      <button class="modal-close" onclick="closeCategoryTargetsModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div style="background:linear-gradient(to right, rgba(37,99,235,0.06), rgba(16,185,129,0.06)); border:1px solid rgba(37,99,235,0.2); border-radius:8px; padding:12px 16px; margin-bottom:14px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+        <div>
+          <div style="font-weight:700; font-size:13.5px; color:var(--tx);">📤 Upload or Customize Category Targets</div>
+          <div class="sub" style="font-size:12px;">প্রতিটি প্রোডাক্ট ক্যাটাগরির (Frozen, Chicken, Egg ইত্যাদি) ডেইলি ও MTD টার্গেট ও সেলস্ ভ্যালু এন্ট্রি করুন বা এক্সেল ফাইল আপলোড করুন। মোট টার্গেট স্বয়ংক্রিয়ভাবে মূল ড্যাশবোর্ডে যুক্ত হবে।</div>
+        </div>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <input type="file" id="tgt_excel_file" accept=".xlsx,.xls,.csv" style="display:none;" onchange="handleCategoryTargetFileUpload(event)">
+          <button class="s sm" type="button" onclick="$('tgt_excel_file').click()" style="display:inline-flex; align-items:center; gap:5px; font-weight:600;"><span style="font-size:14px;">📁</span> Upload Excel / CSV</button>
+          <button class="s sm" type="button" onclick="downloadCategoryTargetTemplate()" style="display:inline-flex; align-items:center; gap:5px;"><span style="font-size:14px;">📥</span> Template</button>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Product Category</th>
+              <th>Unit</th>
+              <th style="min-width:140px;">Today Target (Tk)</th>
+              <th style="min-width:140px;">MTD Target (Tk)</th>
+              <th style="min-width:140px;">MTD Sales/Deliv (Tk)</th>
+              <th class="center">MTD Ach %</th>
+            </tr>
+          </thead>
+          <tbody id="tgt_modal_tb"></tbody>
+          <tfoot>
+            <tr style="background:rgba(37,99,235,0.08); font-weight:700;">
+              <td>Total Overall</td>
+              <td>—</td>
+              <td id="tgt_sum_today" class="num" style="color:var(--primary); font-size:14px;">0</td>
+              <td id="tgt_sum_mtd_tgt" class="num" style="color:var(--ok); font-size:14px;">0</td>
+              <td id="tgt_sum_mtd_sales" class="num" style="color:var(--ac); font-size:14px;">0</td>
+              <td id="tgt_sum_ach" class="center"><span class="cover-pill cover-ok">0%</span></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+
+      <div class="btn-row" style="margin-top:16px; justify-content:flex-end;">
+        <button type="button" class="s" onclick="closeCategoryTargetsModal()">Cancel</button>
+        <button type="button" class="p" onclick="applyCategoryTargetsToDashboard()">💾 Apply & Save to Report</button>
       </div>
     </div>
   </div>
@@ -1764,6 +1871,55 @@ Savar	Egg	42000	7500" oninput="parsePastedTable()"></textarea>
 </div>
 
 <!-- ============================================================ -->
+<!-- MODAL: POLOXY ERP AUTOMATED SYNC (MOBILE & CLIENT NO-PYTHON) -->
+<!-- ============================================================ -->
+<div id="modal-erp-sync" class="modal-overlay hid" onclick="if(event.target===this)closeErpSyncModal()">
+  <div class="modal-box" style="max-width:580px;">
+    <div class="modal-header">
+      <div class="modal-title" style="display:flex; align-items:center; gap:8px; color:var(--ac);">
+        <span>⚡ Poloxy ERP Auto Sync (Cloud & Mobile)</span>
+      </div>
+      <button class="modal-close" onclick="closeErpSyncModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div style="background:var(--card); border:1px solid var(--bd); padding:12px 14px; border-radius:8px; margin-bottom:14px; display:flex; flex-direction:column; gap:4px;">
+        <div style="font-weight:700; font-size:13px; color:var(--tx);">
+          💡 Zero-Installation ERP Data Synchronization
+        </div>
+        <div class="sub" style="font-size:12px; line-height:1.4;">
+          মোবাইল ফোন (Mobile/Tablet) বা পাইথন ছাড়া যেকোনো কম্পিউটার থেকেও এক ক্লিকে Poloxy ERP থেকে সেলস অর্ডার, ডেলিভারি চালান ও স্টক সিঙ্ক করে ড্যাশবোর্ড আপডেট করতে পারবেন।
+        </div>
+      </div>
+
+      <div class="g" style="grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:14px;">
+        <div>
+          <label style="font-weight:600; font-size:12px;">Sync Date *</label>
+          <input type="date" id="erp_sync_date" style="padding:8px 10px; width:100%;">
+        </div>
+        <div>
+          <label style="font-weight:600; font-size:12px;">Product Category *</label>
+          <select id="erp_sync_cat" style="padding:8px 10px; width:100%;">
+            <option value="all">🌟 All Categories (Frozen + Chicken + Egg)</option>
+            <option value="Frozen">❄️ 02. Frozen Foods (Pkt)</option>
+            <option value="Chicken">🍗 01. Process Chicken (Kg)</option>
+            <option value="Egg">🥚 03. Branded Eggs (Pcs)</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="erp_sync_status_box" style="display:none; padding:12px 14px; border-radius:8px; font-size:12.5px; margin-bottom:14px; line-height:1.4;"></div>
+
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; padding-top:10px; border-top:1px solid var(--bd);">
+        <button type="button" class="s sm" onclick="setTab('bulk'); closeErpSyncModal();" style="font-size:12px;">📂 Manual Excel / CSV Upload →</button>
+        <button type="button" id="btn_run_erp_sync" class="p" onclick="startErpSyncNow()" style="display:inline-flex; align-items:center; gap:6px; font-weight:700; padding:9px 18px;">
+          <span>🚀 Start Auto Sync</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================ -->
 <!-- MODAL: CLEAR / PURGE DATA BY DATE OR DATE RANGE (ADMIN ONLY) -->
 <!-- ============================================================ -->
 <div id="modal-clear-data" class="modal-overlay hid" onclick="if(event.target===this)closeClearDataModal()">
@@ -1864,6 +2020,27 @@ const fmt = x => Math.round(num(x)).toLocaleString('en-US');
 const pct = (a, b) => b > 0 ? Math.round(a / b * 100) : 0;
 const lc = s => String(s || '').trim().toLowerCase();
 const esc = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+let currentCategoryTargets = {};
+
+// Short Amount Formatter (e.g. 12 Lac, 5 Cr, 20 K)
+function formatShortAmount(val) {
+  if (val == null || val === '' || isNaN(val)) return '0';
+  const n = Math.abs(Number(val));
+  const sign = Number(val) < 0 ? '-' : '';
+  if (n >= 10000000) { // 1 Crore = 10,000,000 Tk
+    const cr = n / 10000000;
+    return sign + (cr >= 10 ? cr.toFixed(1) : cr.toFixed(2)).replace(/\.00$/, '') + ' Cr';
+  } else if (n >= 100000) { // 1 Lac = 100,000 Tk
+    const lac = n / 100000;
+    return sign + (lac >= 10 ? lac.toFixed(1) : lac.toFixed(2)).replace(/\.00$/, '') + ' Lac';
+  } else if (n >= 1000) { // 1 K = 1,000 Tk
+    const k = n / 1000;
+    return sign + (k >= 10 ? Math.round(k) : k.toFixed(1)).replace(/\.0$/, '') + ' K';
+  } else {
+    return sign + Math.round(n).toLocaleString('en-US');
+  }
+}
 
 function msg(text, ok = false) {
   const m = $('msg');
@@ -2149,14 +2326,20 @@ async function loadAll(quiet = false) {
 
     // Populate Report Fields
     const r = repRes.report;
+    currentCategoryTargets = r.category_targets || {};
     $('head').value = r.head || 'Atikur';
-    $('st').value = r.today_sales || '';
+    $('st').value = (r.delivery_amount && !r.today_sales) ? r.delivery_amount : (r.today_sales || '');
     $('stt').value = r.today_target || '';
     $('sm').value = r.mtd_sales || '';
     $('smt').value = r.mtd_target || '';
     $('top_depot').value = r.top_depot || '';
     $('low_depot').value = r.low_depot || '';
     $('iss').value = r.issues || '';
+
+    // Auto-suggest Top & Low Depots if empty
+    if (!$('top_depot').value || !$('low_depot').value) {
+      autoDetectTopLowDepots(false);
+    }
 
     calcAch();
     populateDepotDropdown();
@@ -2171,8 +2354,72 @@ async function loadAll(quiet = false) {
 
 function calcAch() {
   const st = num($('st').value), stt = num($('stt').value);
-  $('kpi-sales').textContent = st ? fmt(st) : '–';
-  $('kpi-sales-ach').textContent = `Target: ${fmt(stt)} (Ach ${pct(st, stt)}%)`;
+  const sm = num($('sm').value), smt = num($('smt').value);
+
+  $('kpi-sales').textContent = st ? formatShortAmount(st) : '–';
+  $('kpi-sales').title = st ? `${fmt(st)} Tk` : '';
+  $('kpi-sales-ach').textContent = `Target: ${formatShortAmount(stt)} (Ach ${pct(st, stt)}%)`;
+
+  const badgeSt = $('st_short_badge');
+  if (badgeSt) badgeSt.textContent = st ? formatShortAmount(st) : '–';
+  const badgeStt = $('stt_short_badge');
+  if (badgeStt) badgeStt.textContent = stt ? formatShortAmount(stt) : '–';
+  const badgeSm = $('sm_short_badge');
+  if (badgeSm) badgeSm.textContent = sm ? formatShortAmount(sm) : '–';
+  const badgeSmt = $('smt_short_badge');
+  if (badgeSmt) badgeSmt.textContent = smt ? formatShortAmount(smt) : '–';
+}
+
+function autoDetectTopLowDepots(force = false) {
+  if (!ents || !ents.length) return;
+  const depotStats = {};
+  ents.forEach(r => {
+    const d = r.depot;
+    if (!depotStats[d]) depotStats[d] = { depot: d, delivered: 0, orders: 0, pending: 0, pSoCnt: 0 };
+    depotStats[d].delivered += (r.delivered || 0);
+    depotStats[d].orders += (r.orders || 0);
+    const pend = Math.max(0, (r.orders || 0) - (r.delivered || 0));
+    depotStats[d].pending += pend;
+    if (r.pending_orders > 0) depotStats[d].pSoCnt += r.pending_orders;
+  });
+
+  const list = Object.values(depotStats);
+  if (!list.length) return;
+
+  // Best depot: highest delivered with highest fulfillment %
+  list.sort((a, b) => {
+    const pctA = a.orders > 0 ? (a.delivered / a.orders) : 0;
+    const pctB = b.orders > 0 ? (b.delivered / b.orders) : 0;
+    if (pctA >= 0.95 && pctB >= 0.95) return b.delivered - a.delivered;
+    if (Math.abs(pctA - pctB) > 0.05) return pctB - pctA;
+    return b.delivered - a.delivered;
+  });
+  const best = list[0];
+
+  // Worst depot: lowest fulfillment % or highest pending volume
+  const lowList = [...list].sort((a, b) => {
+    const pctA = a.orders > 0 ? (a.delivered / a.orders) : 1;
+    const pctB = b.orders > 0 ? (b.delivered / b.orders) : 1;
+    if (pctA !== pctB) return pctA - pctB;
+    return b.pending - a.pending;
+  });
+  const worst = lowList.find(x => x.depot !== best.depot && (x.pending > 0 || x.orders > 0)) || lowList[0];
+
+  const topEl = $('top_depot');
+  const lowEl = $('low_depot');
+
+  if (best && (force || !topEl.value)) {
+    const fulPct = best.orders > 0 ? Math.round((best.delivered / best.orders) * 100) : 100;
+    topEl.value = `${best.depot} (${fmt(best.delivered)} Delivered, ${fulPct}% Fulfilled)`;
+  }
+  if (worst && worst.depot !== best.depot && (force || !lowEl.value)) {
+    const fulPct = worst.orders > 0 ? Math.round((worst.delivered / worst.orders) * 100) : 100;
+    const pendDetail = worst.pSoCnt > 0 ? `${worst.pSoCnt} SOs Pending` : `${fmt(worst.pending)} Backlog`;
+    lowEl.value = `${worst.depot} (${pendDetail}, ${fulPct}% Fulfilled)`;
+  }
+  if (force) {
+    msg('Top & Low depots auto-calculated based on delivery performance ✓', true);
+  }
 }
 
 function populateDepotDropdown() {
@@ -2336,7 +2583,7 @@ function renderAll() {
     let varBadge = '';
     if (x.pending_sos > 0) {
       const diff = Math.max(0, o - v);
-      varBadge = `<span class="badge" style="background:var(--warn-bg); color:var(--warn); font-weight:700;" title="চালান অনিষ্পন্ন: ${x.pending_sos} টি সেলস অর্ডার (${fmt(diff)} ${u})">⏳ ${x.pending_sos} SOs অনিষ্পন্ন (${fmt(diff)} ${u})</span>`;
+      varBadge = `<span class="badge" style="background:var(--warn-bg); color:var(--warn); font-weight:700;" title="Pending: ${x.pending_sos} টি সেলস অর্ডার (${fmt(diff)} ${u})">⏳ ${x.pending_sos} SOs Pending (${fmt(diff)} ${u})</span>`;
     } else if (v > o) {
       const diff = v - o;
       varBadge = `<span class="badge" style="background:var(--ok-bg); color:var(--ok); font-weight:700;" title="ডেলিভারি বেশি (+${fmt(diff)} ${u}): পূর্ববর্তী ব্যাকলগ ও বাল্ক চালান সরবরাহ">+${fmt(diff)} (ডেলিভারি বেশি)</span>`;
@@ -2389,16 +2636,16 @@ function renderAll() {
     const o = r.orders || 0;
     const v = r.delivered || 0;
     let varBadge = '';
-    let autoReason = r.remarks || '';
+    let autoReason = (r.remarks || '').replace(/চালান\s*প্রক্রিয়াধীন\s*\/\s*ইন-ট্রানজিট/g, 'Pending').replace(/চালান\s*অনিষ্পন্ন/g, 'Pending').replace(/অনিষ্পন্ন/g, 'Pending');
 
     const depNameLower = String(r.depot || '').toLowerCase();
     const isFactory = depNameLower.includes('factory') || depNameLower.includes('ashulia') || depNameLower.includes('gazipur');
 
     if (r.pending_orders > 0) {
       const diff = Math.max(0, o - v);
-      varBadge = `<span class="badge" style="background:var(--warn-bg); color:var(--warn); font-weight:700;" title="চালান অনিষ্পন্ন: ${r.pending_orders} টি সেলস অর্ডার (${fmt(diff)} ${u})">⏳ ${r.pending_orders} SOs (-${fmt(diff)})</span>`;
+      varBadge = `<span class="badge" style="background:var(--warn-bg); color:var(--warn); font-weight:700;" title="Pending: ${r.pending_orders} টি সেলস অর্ডার (${fmt(diff)} ${u})">⏳ ${r.pending_orders} SOs Pending (-${fmt(diff)})</span>`;
       if (!autoReason) {
-        autoReason = `পূর্বনির্ধারিত শিডিউলের চালান অনিষ্পন্ন (-${fmt(diff)} ${u})`;
+        autoReason = `${r.pending_orders} টি সেলস অর্ডার (-${fmt(diff)} ${u}) Pending`;
       }
     } else if (v > o) {
       const diff = v - o;
@@ -2522,8 +2769,8 @@ function renderVarianceInsights() {
     } else if (o > v) {
       const pSoTotal = catEnts.reduce((sum, r) => sum + (r.pending_orders || 0), 0);
       const badgeText = pSoTotal > 0
-        ? `⏳ ${pSoTotal} টি SO অনিষ্পন্ন / আংশিক ডেলিভারি`
-        : `⏳ আংশিক সরবরাহ / চালান সমন্বয় চলমান (-${fmt(diff)} ${u})`;
+        ? `⏳ ${pSoTotal} টি SO Pending`
+        : `⏳ Pending (-${fmt(diff)} ${u})`;
 
       insights.push(`
         <div style="padding:10px 14px; background:var(--card); border:1px solid var(--bd); border-radius:8px; margin-bottom:8px; display:flex; flex-direction:column; gap:4px;">
@@ -2536,7 +2783,7 @@ function renderVarianceInsights() {
             </span>
           </div>
           <div style="font-size:12.5px; color:var(--tx); line-height:1.4;">
-            <b>💡 ডেলিভারি স্ট্যাটাস:</b> আজকের ডেলিভারির জন্য পূর্বনির্ধারিত অর্ডারের মধ্যে <b>${fmt(v)} ${u}</b> সরবরাহ সম্পন্ন হয়েছে। ${pSoTotal > 0 ? `এর মধ্যে <b>${pSoTotal}</b> টি সেলস অর্ডারের চালান এখনো অনিষ্পন্ন বা প্রস্তুত হয়নি।` : `বাকি অংশের ডেলিভারি চালান প্রসেসিং/ট্রানজিট পর্যায়ে রয়েছে।`}
+            <b>💡 ডেলিভারি স্ট্যাটাস:</b> আজকের ডেলিভারির জন্য পূর্বনির্ধারিত অর্ডারের মধ্যে <b>${fmt(v)} ${u}</b> সরবরাহ সম্পন্ন হয়েছে। ${pSoTotal > 0 ? `এর মধ্যে <b>${pSoTotal}</b> টি সেলস অর্ডার এখনো <b>Pending</b> রয়েছে।` : `বাকি অংশের ডেলিভারি <b>Pending</b> রয়েছে।`}
             <br><span style="font-size:11.5px; color:var(--mut);"><i>(📌 গুরুত্বপূর্ণ নিয়ম: আজকের নতুন বুকিংকৃত অর্ডার আজকের কাউন্টে বা পেন্ডিংয়ে আসবে না; সেগুলো আগামীকালের অর্ডার ও ডেলিভারি রিপোর্টে হিসাবভুক্ত হবে)।</i></span>
             ${pendingDepots.length ? `<br><span style="font-size:11.5px; color:var(--mut);">পার্থক্য থাকা ডিপোসমূহ: <b>${esc(pendingDepots.join(', '))}</b></span>` : ''}
           </div>
@@ -2660,11 +2907,13 @@ async function saveReportData() {
       today_target: num($('stt').value),
       mtd_sales: num($('sm').value),
       mtd_target: num($('smt').value),
+      delivery_amount: num($('st').value),
       top_depot: $('top_depot').value,
       low_depot: $('low_depot').value,
-      issues: $('iss').value
+      issues: $('iss').value,
+      category_targets: currentCategoryTargets || {}
     });
-    msg('Sales & challenges saved ✓', true);
+    msg('Sales performance & challenges saved ✓', true);
     calcAch();
   } catch (e) {
     msg(e.message);
@@ -2713,10 +2962,10 @@ function genReport() {
     `*Date:* ${dateFormatted}`,
     ``,
     `*Key Points:*`,
-    `📈 *GT Frozen Sales*`,
-    `- ${salesLabel}: ${fmt(st)} (Target ${fmt(stt)} | Ach ${pct(st, stt)}%)`,
-    `- MTD: ${fmt(sm)} (Target ${fmt(smt)} | Ach ${pct(sm, smt)}%)`,
-    `- Top: ${topDep} | Low: ${lowDep}`,
+    `📈 *Sales & Distribution Performance*`,
+    `- ${salesLabel} Delivery: ${formatShortAmount(st)} Tk (Target ${formatShortAmount(stt)} Tk | Ach ${pct(st, stt)}%)`,
+    `- MTD Delivery/Sales: ${formatShortAmount(sm)} Tk (Target ${formatShortAmount(smt)} Tk | Ach ${pct(sm, smt)}%)`,
+    `- Top Depot: ${topDep} | Low Depot: ${lowDep}`,
     ``,
     `🚚 *Distribution (Category-wise)*`
   ];
@@ -2729,7 +2978,7 @@ function genReport() {
     if (v > o) {
       L.push(`- ${c}: Orders ${fmt(o)} ${u} | Delivered ${fmt(v)} ${u} (Over-Delivered +${fmt(v - o)} ${u} via backlog / factory supply)`);
     } else if (o > v) {
-      L.push(`- ${c}: Orders ${fmt(o)} ${u} | Delivered ${fmt(v)} ${u} | Next Day Schedule / In-Transit ${fmt(o - v)} ${u}`);
+      L.push(`- ${c}: Orders ${fmt(o)} ${u} | Delivered ${fmt(v)} ${u} | Pending ${fmt(o - v)} ${u}`);
     } else {
       L.push(`- ${c}: Orders ${fmt(o)} ${u} | Delivered ${fmt(v)} ${u} (100% Fulfilled ✓)`);
     }
@@ -2969,7 +3218,7 @@ async function deleteDispatch(id) {
 // DRILL-DOWN MODALS (HYPERLINK TARGETS)
 // ----------------------------------------------------
 
-// 1. Sales Modal
+// 1. Sales & Distribution Performance Modal
 function openSalesModal() {
   $('modal-sales').classList.remove('hid');
   renderSalesModal();
@@ -2980,10 +3229,12 @@ function closeSalesModal() {
 function renderSalesModal() {
   const st = num($('st').value), stt = num($('stt').value);
   const sm = num($('sm').value), smt = num($('smt').value);
-  $('modal_sales_today').textContent = st ? fmt(st) : '0';
-  $('modal_sales_today_target').textContent = `Target: ${fmt(stt)} (Ach ${pct(st, stt)}%)`;
-  $('modal_sales_mtd').textContent = sm ? fmt(sm) : '0';
-  $('modal_sales_mtd_target').textContent = `Target: ${fmt(smt)} (Ach ${pct(sm, smt)}%)`;
+  $('modal_sales_today').textContent = st ? formatShortAmount(st) : '0';
+  $('modal_sales_today').title = st ? `${fmt(st)} Tk` : '';
+  $('modal_sales_today_target').textContent = `Target: ${formatShortAmount(stt)} (Ach ${pct(st, stt)}%)`;
+  $('modal_sales_mtd').textContent = sm ? formatShortAmount(sm) : '0';
+  $('modal_sales_mtd').title = sm ? `${fmt(sm)} Tk` : '';
+  $('modal_sales_mtd_target').textContent = `Target: ${formatShortAmount(smt)} (Ach ${pct(sm, smt)}%)`;
   $('modal_sales_top_depot').textContent = $('top_depot').value || '—';
   $('modal_sales_low_depot').textContent = $('low_depot').value || '—';
 
@@ -3002,6 +3253,167 @@ function renderSalesModal() {
       <td class="center"><span class="cover-pill ${covClass}">${cov} days</span></td>
     </tr>`;
   }).join('');
+}
+
+// 1b. Category Targets & MTD Modal
+function openCategoryTargetsModal() {
+  $('modal-category-targets').classList.remove('hid');
+  renderCategoryTargetsModal();
+}
+
+function closeCategoryTargetsModal() {
+  $('modal-category-targets').classList.add('hid');
+}
+
+function renderCategoryTargetsModal() {
+  const tb = $('tgt_modal_tb');
+  if (!tb) return;
+  const cats = CATS && CATS.length ? CATS : ['Frozen', 'Chicken', 'Egg', 'Dairy', 'Others'];
+  const targets = currentCategoryTargets || {};
+
+  tb.innerHTML = cats.map(c => {
+    const t = targets[c] || {};
+    const tt = t.today_target != null && t.today_target !== '' ? t.today_target : '';
+    const mt = t.mtd_target != null && t.mtd_target !== '' ? t.mtd_target : '';
+    const ms = t.mtd_sales != null && t.mtd_sales !== '' ? t.mtd_sales : '';
+    const ach = pct(num(ms), num(mt));
+    const achPill = ach >= 90 ? 'cover-ok' : (ach >= 60 ? 'cover-pill' : 'cover-bad');
+    const u = getCatUnit(c);
+
+    return `<tr>
+      <td><b>${esc(c)}</b></td>
+      <td><span class="sub">${esc(u)}</span></td>
+      <td><input id="tgt_cat_tt_${esc(c)}" type="number" min="0" value="${tt}" placeholder="e.g. 500000" oninput="calcCategoryTargetsTotals()" style="width:100%; padding:5px 8px; font-size:13px;"></td>
+      <td><input id="tgt_cat_mt_${esc(c)}" type="number" min="0" value="${mt}" placeholder="e.g. 15000000" oninput="calcCategoryTargetsTotals()" style="width:100%; padding:5px 8px; font-size:13px;"></td>
+      <td><input id="tgt_cat_ms_${esc(c)}" type="number" min="0" value="${ms}" placeholder="e.g. 12000000" oninput="calcCategoryTargetsTotals()" style="width:100%; padding:5px 8px; font-size:13px;"></td>
+      <td class="center" id="tgt_cat_ach_${esc(c)}"><span class="cover-pill ${achPill}">${ach}%</span></td>
+    </tr>`;
+  }).join('');
+
+  calcCategoryTargetsTotals();
+}
+
+function calcCategoryTargetsTotals() {
+  const cats = CATS && CATS.length ? CATS : ['Frozen', 'Chicken', 'Egg', 'Dairy', 'Others'];
+  let sumToday = 0, sumMtdTgt = 0, sumMtdSales = 0;
+
+  cats.forEach(c => {
+    const tt = num($(`tgt_cat_tt_${c}`) ? $(`tgt_cat_tt_${c}`).value : 0);
+    const mt = num($(`tgt_cat_mt_${c}`) ? $(`tgt_cat_mt_${c}`).value : 0);
+    const ms = num($(`tgt_cat_ms_${c}`) ? $(`tgt_cat_ms_${c}`).value : 0);
+    sumToday += tt;
+    sumMtdTgt += mt;
+    sumMtdSales += ms;
+
+    const achEl = $(`tgt_cat_ach_${c}`);
+    if (achEl) {
+      const ach = pct(ms, mt);
+      const pill = ach >= 90 ? 'cover-ok' : (ach >= 60 ? 'cover-pill' : 'cover-bad');
+      achEl.innerHTML = `<span class="cover-pill ${pill}">${ach}%</span>`;
+    }
+  });
+
+  const overallAch = pct(sumMtdSales, sumMtdTgt);
+  const overallPill = overallAch >= 90 ? 'cover-ok' : (overallAch >= 60 ? 'cover-pill' : 'cover-bad');
+
+  if ($('tgt_sum_today')) $('tgt_sum_today').innerHTML = `${fmt(sumToday)} <span class="badge" style="font-size:11px; margin-left:4px;">${formatShortAmount(sumToday)}</span>`;
+  if ($('tgt_sum_mtd_tgt')) $('tgt_sum_mtd_tgt').innerHTML = `${fmt(sumMtdTgt)} <span class="badge" style="font-size:11px; margin-left:4px;">${formatShortAmount(sumMtdTgt)}</span>`;
+  if ($('tgt_sum_mtd_sales')) $('tgt_sum_mtd_sales').innerHTML = `${fmt(sumMtdSales)} <span class="badge" style="font-size:11px; margin-left:4px;">${formatShortAmount(sumMtdSales)}</span>`;
+  if ($('tgt_sum_ach')) $('tgt_sum_ach').innerHTML = `<span class="cover-pill ${overallPill}">${overallAch}%</span>`;
+}
+
+function applyCategoryTargetsToDashboard() {
+  const cats = CATS && CATS.length ? CATS : ['Frozen', 'Chicken', 'Egg', 'Dairy', 'Others'];
+  let sumToday = 0, sumMtdTgt = 0, sumMtdSales = 0;
+  const newTargets = {};
+
+  cats.forEach(c => {
+    const tt = num($(`tgt_cat_tt_${c}`) ? $(`tgt_cat_tt_${c}`).value : 0);
+    const mt = num($(`tgt_cat_mt_${c}`) ? $(`tgt_cat_mt_${c}`).value : 0);
+    const ms = num($(`tgt_cat_ms_${c}`) ? $(`tgt_cat_ms_${c}`).value : 0);
+    newTargets[c] = { today_target: tt, mtd_target: mt, mtd_sales: ms };
+    sumToday += tt;
+    sumMtdTgt += mt;
+    sumMtdSales += ms;
+  });
+
+  currentCategoryTargets = newTargets;
+  if (sumToday > 0) $('stt').value = sumToday;
+  if (sumMtdTgt > 0) $('smt').value = sumMtdTgt;
+  if (sumMtdSales > 0) $('sm').value = sumMtdSales;
+
+  calcAch();
+  saveReportData();
+  closeCategoryTargetsModal();
+  msg('Category targets applied and saved to report ✓', true);
+}
+
+function downloadCategoryTargetTemplate() {
+  if (typeof XLSX === 'undefined') {
+    msg('Excel library not loaded');
+    return;
+  }
+  const cats = CATS && CATS.length ? CATS : ['Frozen', 'Chicken', 'Egg', 'Dairy', 'Others'];
+  const data = [
+    ['Category', 'Today_Target_Tk', 'MTD_Target_Tk', 'MTD_Sales_Tk'],
+    ...cats.map(c => [c, 0, 0, 0])
+  ];
+  const ws = XLSX.utils.aoa_to_sheet(data);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Category_Targets');
+  XLSX.writeFile(wb, 'Paragon_Category_Sales_Targets_Template.xlsx');
+}
+
+function handleCategoryTargetFileUpload(event) {
+  const file = event.target.files && event.target.files[0];
+  if (!file) return;
+  if (typeof XLSX === 'undefined') {
+    msg('Excel parser is not available.');
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const data = new Uint8Array(e.target.result);
+      const workbook = XLSX.read(data, { type: 'array' });
+      const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(firstSheet, { header: 1 });
+      if (!rows || rows.length < 2) throw new Error('File contains no data rows');
+
+      const headers = rows[0].map(h => String(h || '').trim().toLowerCase());
+      const catIdx = headers.findIndex(h => h.includes('cat') || h.includes('product') || h.includes('item'));
+      const todayTgtIdx = headers.findIndex(h => (h.includes('today') || h.includes('daily')) && h.includes('target'));
+      const mtdTgtIdx = headers.findIndex(h => h.includes('mtd') && h.includes('target'));
+      const mtdSalesIdx = headers.findIndex(h => h.includes('mtd') && (h.includes('sale') || h.includes('deliv')));
+
+      let count = 0;
+      for (let i = 1; i < rows.length; i++) {
+        const row = rows[i];
+        if (!row || !row.length) continue;
+        const catName = String(row[catIdx >= 0 ? catIdx : 0] || '').trim();
+        const matchedCat = CATS.find(c => lc(c) === lc(catName));
+        if (matchedCat) {
+          const tt = num(row[todayTgtIdx >= 0 ? todayTgtIdx : 1]) || 0;
+          const mt = num(row[mtdTgtIdx >= 0 ? mtdTgtIdx : 2]) || 0;
+          const ms = num(row[mtdSalesIdx >= 0 ? mtdSalesIdx : 3]) || 0;
+          const ttEl = $(`tgt_cat_tt_${matchedCat}`);
+          const mtEl = $(`tgt_cat_mt_${matchedCat}`);
+          const msEl = $(`tgt_cat_ms_${matchedCat}`);
+          if (ttEl && tt > 0) ttEl.value = tt;
+          if (mtEl && mt > 0) mtEl.value = mt;
+          if (msEl && ms > 0) msEl.value = ms;
+          count++;
+        }
+      }
+      calcCategoryTargetsTotals();
+      msg(`Imported targets for ${count} categories ✓`, true);
+      event.target.value = '';
+    } catch(err) {
+      msg('Error reading file: ' + err.message);
+      event.target.value = '';
+    }
+  };
+  reader.readAsArrayBuffer(file);
 }
 
 // 2. Vans On Road Modal (Formula: Total Assigned - Delivery Completed - Under Maintenance)
@@ -3208,7 +3620,9 @@ function renderPendingModal() {
 
   tb.innerHTML = pendingRows.map(row => {
     const fulPct = pct(row.delivered, row.orders);
-    const reason = row.remarks || (row.pending_orders > 0 ? `পূর্বনির্ধারিত শিডিউলের চালান অনিষ্পন্ন (-${fmt(row.pending)} ${row.unit})` : `নির্ধারিত অর্ডারের আংশিক সরবরাহ সম্পন্ন (-${fmt(row.pending)} ${row.unit})`);
+    const pillClass = fulPct >= 90 ? 'cover-ok' : (fulPct >= 60 ? 'cover-pill' : 'cover-bad');
+    const rawReason = row.remarks || (row.pending_orders > 0 ? `${row.pending_orders} টি সেলস অর্ডার (-${fmt(row.pending)} ${row.unit}) Pending` : `আংশিক ডেলিভারি (-${fmt(row.pending)} ${row.unit}) Pending`);
+    const reason = rawReason.replace(/চালান\s*প্রক্রিয়াধীন\s*\/\s*ইন-ট্রানজিট/g, 'Pending').replace(/চালান\s*অনিষ্পন্ন/g, 'Pending').replace(/অনিষ্পন্ন/g, 'Pending');
     let soBadge = '<span class="badge cover-ok">0 Pending</span>';
     if (row.pending_orders > 0) {
       let soPreview = '';
@@ -3367,15 +3781,15 @@ function renderCategoryModal(catName, sortCol = 'all') {
     const covClass = r.avg_daily > 0 && (r.stock / r.avg_daily) < 3 ? 'cover-bad' : 'cover-ok';
 
     let varPill = '';
-    let autoReason = r.remarks || '';
+    let autoReason = (r.remarks || '').replace(/চালান\s*প্রক্রিয়াধীন\s*\/\s*ইন-ট্রানজিট/g, 'Pending').replace(/চালান\s*অনিষ্পন্ন/g, 'Pending').replace(/অনিষ্পন্ন/g, 'Pending');
     const depNameLower = String(r.depot || '').toLowerCase();
     const isFactory = depNameLower.includes('factory') || depNameLower.includes('ashulia') || depNameLower.includes('gazipur');
 
     if (r.pending_orders > 0) {
       const diff = Math.max(0, o - v);
-      varPill = `<span class="badge" style="background:var(--warn-bg); color:var(--warn); font-weight:700;" title="চালান অনিষ্পন্ন: ${r.pending_orders} টি সেলস অর্ডার (${fmt(diff)} ${u})">⏳ ${r.pending_orders} SOs (-${fmt(diff)})</span>`;
+      varPill = `<span class="badge" style="background:var(--warn-bg); color:var(--warn); font-weight:700;" title="Pending: ${r.pending_orders} টি সেলস অর্ডার (${fmt(diff)} ${u})">⏳ ${r.pending_orders} SOs Pending (-${fmt(diff)})</span>`;
       if (!autoReason) {
-        autoReason = `পূর্ববর্তী শিডিউলের চালান অনিষ্পন্ন / ইন-ট্রানজিট (-${fmt(diff)} ${u})`;
+        autoReason = `${r.pending_orders} টি সেলস অর্ডার (-${fmt(diff)} ${u}) Pending`;
       }
     } else if (v > o) {
       const diff = v - o;
@@ -4436,6 +4850,101 @@ async function delErpDepot(id) {
 }
 
 // ========================================================
+// POLOXY ERP AUTOMATED SYNC MODAL & CLIENT LOGIC
+// ========================================================
+function openErpSyncModal() {
+  const dVal = $('date') ? $('date').value : today();
+  if ($('erp_sync_date')) $('erp_sync_date').value = dVal;
+  const sBox = $('erp_sync_status_box');
+  if (sBox) sBox.style.display = 'none';
+  const btn = $('btn_run_erp_sync');
+  if (btn) {
+    btn.disabled = false;
+    btn.innerHTML = '<span>🚀 Start Auto Sync</span>';
+  }
+  $('modal-erp-sync').classList.remove('hid');
+}
+
+function closeErpSyncModal() {
+  $('modal-erp-sync').classList.add('hid');
+}
+
+async function startErpSyncNow() {
+  const dVal = $('erp_sync_date') ? $('erp_sync_date').value : '';
+  const cVal = $('erp_sync_cat') ? $('erp_sync_cat').value : 'all';
+  const btn = $('btn_run_erp_sync');
+  const sBox = $('erp_sync_status_box');
+
+  if (!dVal) {
+    alert('Please select a sync date (YYYY-MM-DD)');
+    return;
+  }
+
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<span>⏳ Syncing from ERP...</span>';
+  }
+  if (sBox) {
+    sBox.style.display = 'block';
+    sBox.style.background = 'var(--primary-bg)';
+    sBox.style.border = '1px solid var(--primary)';
+    sBox.style.color = 'var(--primary)';
+    sBox.innerHTML = `
+      <div style="font-weight:700; font-size:13px; margin-bottom:4px;">⏳ Connecting to Poloxy ERP...</div>
+      <div>• Date: <b>${esc(dVal)}</b> | Category: <b>${esc(cVal)}</b></div>
+      <div style="margin-top:4px; font-size:12px; color:var(--tx);">
+        অর্ডার, ডেলিভারি ও পেন্ডিং হিসাব করা হচ্ছে। অনুগ্রহ করে ১০-২৫ সেকেন্ড অপেক্ষা করুন...
+      </div>
+    `;
+  }
+
+  try {
+    const res = await api('POST', '/api/admin/sync-erp', { date: dVal, category: cVal });
+    if (res.ok) {
+      if (sBox) {
+        sBox.style.background = 'var(--ok-bg)';
+        sBox.style.border = '1px solid var(--ok)';
+        sBox.style.color = 'var(--ok)';
+        sBox.innerHTML = `
+          <div style="font-weight:700; font-size:13px; margin-bottom:4px;">🎉 ERP Sync Successfully Completed!</div>
+          <div>• <b>${res.count}</b> টি ডিপো রেকর্ড ডাটাবেজে স্বয়ংক্রিয়ভাবে সেভ করা হয়েছে।</div>
+          ${res.total_delivery_amount > 0 ? `<div>• Total Delivery Amount: <b>${fmt(res.total_delivery_amount)} Tk</b></div>` : ''}
+          <div style="margin-top:6px; font-size:11.5px; color:var(--tx);">
+            ✓ ড্যাশবোর্ড আপডেট করা হয়েছে।
+          </div>
+        `;
+      }
+      if (btn) btn.innerHTML = '<span>✓ Done</span>';
+      msg(`ERP Sync successful! ${res.count} records saved ✓`, true);
+
+      // Set active date and reload
+      const dEl = $('date');
+      if (dEl) dEl.value = dVal;
+      await loadAll(true);
+    } else {
+      throw new Error(res.error || 'ERP Sync failed');
+    }
+  } catch (err) {
+    if (sBox) {
+      sBox.style.background = 'var(--bad-bg)';
+      sBox.style.border = '1px solid var(--bad)';
+      sBox.style.color = 'var(--bad)';
+      sBox.innerHTML = `
+        <div style="font-weight:700; font-size:13px; margin-bottom:4px;">⚠️ Sync Error</div>
+        <div>${esc(err.message)}</div>
+        <div style="margin-top:6px; font-size:11.5px; color:var(--tx);">
+          সার্ভার Poloxy ERP নেটওয়ার্কে পৌঁছাতে না পারলে <a href="javascript:void(0)" onclick="setTab('bulk');closeErpSyncModal();" style="color:var(--primary); text-decoration:underline;">Manual Excel Upload</a> বা লোকাল .exe টুল ব্যবহার করতে পারেন।
+        </div>
+      `;
+    }
+    if (btn) btn.innerHTML = '<span>🔄 Retry Auto Sync</span>';
+    msg('ERP Sync failed: ' + err.message);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+// ========================================================
 // PURGE / CLEAR DATA BY DATE OR DATE RANGE (ADMIN)
 // ========================================================
 function openClearDataModal() {
@@ -4552,7 +5061,7 @@ async function doClearDataRange() {
 // ========================================================
 // PRINT SUPPORT FOR ALL DATA DRILL-DOWN MODALS
 // ========================================================
-const PRINTABLE_MODALS = ['modal-pending', 'modal-category-drilldown', 'modal-sales', 'modal-onroad', 'modal-dispatches', 'modal-maintenance', 'modal-depots-status'];
+const PRINTABLE_MODALS = ['modal-pending', 'modal-category-drilldown', 'modal-sales', 'modal-category-targets', 'modal-onroad', 'modal-dispatches', 'modal-maintenance', 'modal-depots-status'];
 
 function installModalPrintButtons() {
   PRINTABLE_MODALS.forEach(id => {

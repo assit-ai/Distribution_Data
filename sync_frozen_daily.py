@@ -45,6 +45,7 @@ DEFAULT_CONFIG = {
         'item_group': 'CUT-Up-Part',
         'group_id': '17',
         'unit': 'Pkt',
+        'default_depot': 'ashulia02', # Fallback to Factory / Export godown
         'dn_qty_field': 'qty', # Primary unit quantity
         'so_qty_col': 10,      # Bag / primary qty
         'depots': {
@@ -61,7 +62,7 @@ DEFAULT_CONFIG = {
             'ashulia02': {
                 'name': '02. Frozen Foods Factory Godown',
                 'godown_id': 'G5',
-                'ref_patterns': ['02. FROZEN FOOD', '02.FROZEN FOOD', '02 FACTORY', '02.FACTORY', '02.ASH', 'ASHULIA']
+                'ref_patterns': ['02. FROZEN FOOD', '02.FROZEN FOOD', '02 FACTORY', '02.FACTORY', '02.ASH', 'ASHULIA', 'EXPORT', 'CK FROZEN', 'CK FROZEN FOOD', '02.EXPORT', '02 EXPORT']
             },
             'mohakhali02': {
                 'name': '02. Frozen Foods HO Godown',
@@ -582,6 +583,9 @@ def run_category_sync(client, cat_key, cat_conf, start_date_str, end_date_str, s
             loc_to_depot[add_g['name']] = code
 
     delivered_map = {k: 0.0 for k in depots_dict}
+    delivered_amount_map = {k: 0.0 for k in depots_dict}
+    delivered_invoice_amt_map = {k: 0.0 for k in depots_dict}
+    seen_challans = set()
     last_loc = ''
     last_ref_id = ''
     last_date = ''
@@ -638,6 +642,18 @@ def run_category_sync(client, cat_key, cat_conf, start_date_str, end_date_str, s
 
         delivered_map[depot] += qty
 
+        # Delivery sales value: Product Amount = qty * rate (Tk)
+        rate = clean_num(row.get('rate', 0.0))
+        prod_amt = qty * rate
+        delivered_amount_map[depot] += prod_amt
+
+        # Delivery invoice amount from challan header
+        if ref_id and ref_id not in seen_challans:
+            tot_amt = clean_num(row.get('total_amt', 0.0))
+            if tot_amt > 0:
+                delivered_invoice_amt_map[depot] += tot_amt
+                seen_challans.add(ref_id)
+
     # 3. Fetch Stock as of end_date_str
     print(f"[*] Querying Godown Stock as of {end_date_str} for each depot ({cat_conf['item_group']})...")
     stock_map = {}
@@ -679,7 +695,7 @@ def run_category_sync(client, cat_key, cat_conf, start_date_str, end_date_str, s
 
         if p_so_cnt > 0:
             diff_str = f"{pending:,.1f}" if unit == 'Kg' else f"{int(pending):,}"
-            reason = f"{booking_label} অর্ডারের {p_so_cnt} টি সেলস অর্ডার ({diff_str} {unit}) চালান প্রক্রিয়াধীন / ইন-ট্রানজিট"
+            reason = f"{booking_label} অর্ডারের {p_so_cnt} টি সেলস অর্ডার ({diff_str} {unit}) Pending"
         elif delivered > orders:
             diff_str = f"{variance:,.1f}" if unit == 'Kg' else f"{int(variance):,}"
             if is_factory:
@@ -708,6 +724,8 @@ def run_category_sync(client, cat_key, cat_conf, start_date_str, end_date_str, s
             'stock': stock,
             'orders': orders,
             'delivered': delivered,
+            'delivery_amount': round(delivered_amount_map.get(code, 0.0), 2),
+            'delivery_invoice_amt': round(delivered_invoice_amt_map.get(code, 0.0), 2),
             'pending': pending,
             'pending_orders': p_so_cnt,
             'total_orders_count': t_so_cnt,
@@ -824,9 +842,40 @@ if __name__ == '__main__':
         if len(pos_args) > 1 and not end_date:
             end_date = pos_args[1]
 
+    is_interactive = False
+    if not start_date and not json_mode:
+        is_interactive = True
+        today_str = datetime.now().strftime("%d/%m/%Y")
+        print("=" * 70)
+        print("          PARAGON AGRO LTD. - ERP DAILY AUTO SYNC")
+        print("          Categories: Frozen Foods, Process Chicken, Branded Eggs")
+        print("=" * 70)
+        inp = input(f"Enter Start Date [DD/MM/YYYY] (Press Enter for Today: {today_str}): ").strip()
+        start_date = inp if inp else today_str
+        inp_end = input(f"Enter End Date [DD/MM/YYYY] (Press Enter for same date): ").strip()
+        end_date = inp_end if inp_end else start_date
+        print("\nSelect Category to Sync:")
+        print("  1. All Categories (Frozen + Chicken + Egg) [Default]")
+        print("  2. Frozen Foods")
+        print("  3. Process Chicken")
+        print("  4. Branded Eggs")
+        c_choice = input("Enter choice [1-4, Default=1]: ").strip()
+        if c_choice == '2':
+            category_filter = 'Frozen'
+        elif c_choice == '3':
+            category_filter = 'Chicken'
+        elif c_choice == '4':
+            category_filter = 'Egg'
+        else:
+            category_filter = 'all'
+        export_excel = True
+
     if not end_date:
         end_date = start_date
 
     res = run_sync_pipeline(start_date, end_date, category_filter=category_filter, export_excel=export_excel)
     if json_mode:
         print("\n__JSON_START__" + json.dumps(res) + "__JSON_END__")
+
+    if is_interactive:
+        input("\n[OK] Synchronization finished! Press Enter to exit...")
