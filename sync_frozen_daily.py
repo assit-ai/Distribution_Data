@@ -33,6 +33,27 @@ try:
 except ImportError:
     openpyxl = None
 
+# Canonical friendly depot names map
+DEPOT_CANONICAL_NAMES = {
+    'ashulia02': 'Ashulia-Frozen',
+    'ashulia05': 'Ashulia-Frozen',
+    'ashulia': 'Ashulia-Frozen',
+    'ctg01': 'Chittagong',
+    'ctg02': 'Chittagong',
+    'ctg05': 'Chittagong',
+    'tejgaon01': 'Tejgaon',
+    'tejgaon02': 'Tejgaon',
+    'tejgaon03': 'Tejgaon',
+    'tejgaon04': 'Tejgaon',
+    'gazipur01': 'Gazipur',
+    'mohakhali02': 'Mohakhali',
+    'jessore01': 'Jessore',
+    'jessore02': 'Jessore',
+    'sylhet01': 'Sylhet',
+    'sylhet02': 'Sylhet',
+    'ditf05': 'DITF',
+}
+
 BASE_URL = "http://erp.paragon.com.bd"
 USERNAME = "a0162e0019"
 PASSWORD = "pal.123456"
@@ -868,8 +889,9 @@ def run_category_sync(client, cat_key, cat_conf, start_date_str, end_date_str, s
         t_so_cnt = total_sos_map.get(code, 0)
         p_so_nums = pending_so_numbers_map.get(code, [])
 
+        canon_depot_name = DEPOT_CANONICAL_NAMES.get(code.lower(), code)
         summary_data.append({
-            'depot': code,
+            'depot': canon_depot_name,
             'category': cat_key,
             'unit': unit,
             'entry_date': end_dt.strftime("%Y-%m-%d"),

@@ -2193,13 +2193,73 @@ async function api(method, url, body) {
 function normDepot(s) {
   if (!s) return '';
   s = String(s).toLowerCase().trim();
-  if (s.includes('tejgaon') || /(^|[^a-z])(tg|02\.tg)($|[^a-z0-9])/.test(s)) return 'tejgaon';
+  if (s.includes('tejgaon') || /(^|[^a-z])(tg|02\.tg|01\.tg|03\.tg|04\.tg)($|[^a-z0-9])/.test(s)) return 'tejgaon';
   if (s.includes('chittagong') || s.includes('ctg')) return 'ctg';
+  if (s.includes('gazipur')) return 'gazipur';
   if (s.includes('ashulia') || s.includes('factory') || s.includes('ash')) return 'ashulia';
   if (s.includes('mohakhali') || s.includes('ho godown') || s.includes('mhk') || /(^|[^a-z])ho($|[^a-z0-9])/.test(s)) return 'mohakhali';
   if (s.includes('jessore') || /(^|[^a-z])jd($|[^a-z0-9])/.test(s)) return 'jessore';
   if (s.includes('sylhet') || s.includes('syl')) return 'sylhet';
+  if (s.includes('ditf')) return 'ditf';
   return s.replace(/[^a-z0-9]/g, '').replace(/[0-9]+$/, '');
+}
+
+function getCanonicalDepotName(rawDepot) {
+  if (!rawDepot) return '';
+  const str = String(rawDepot).trim();
+
+  // 1. Match against official deps list first
+  if (Array.isArray(deps) && deps.length) {
+    const exact = deps.find(d => lc(d) === lc(str));
+    if (exact) return exact;
+    const matched = deps.find(d => depotMatches(d, str));
+    if (matched) return matched;
+  }
+
+  // 2. Match against registered fleet depots
+  if (Array.isArray(registeredVans) && registeredVans.length) {
+    const fleetDepots = [...new Set(registeredVans.map(v => v.depot).filter(Boolean))];
+    const exact = fleetDepots.find(d => lc(d) === lc(str));
+    if (exact) return exact;
+    const matched = fleetDepots.find(d => depotMatches(d, str));
+    if (matched) return matched;
+  }
+
+  // 3. Match against vehicles table
+  if (Array.isArray(vehicles) && vehicles.length) {
+    const vDepots = [...new Set(vehicles.map(v => v.depot).filter(Boolean))];
+    const exact = vDepots.find(d => lc(d) === lc(str));
+    if (exact) return exact;
+    const matched = vDepots.find(d => depotMatches(d, str));
+    if (matched) return matched;
+  }
+
+  // 4. Default pretty names for known ERP codes if no custom name exists yet
+  const n = normDepot(str);
+  if (n === 'ashulia') return 'Ashulia-Frozen';
+  if (n === 'ctg') return 'Chittagong';
+  if (n === 'tejgaon') return 'Tejgaon';
+  if (n === 'gazipur') return 'Gazipur';
+  if (n === 'mohakhali') return 'Mohakhali';
+  if (n === 'jessore') return 'Jessore';
+  if (n === 'sylhet') return 'Sylhet';
+  if (n === 'ditf') return 'DITF';
+
+  return str;
+}
+
+function getUniqueCanonicalDepots(rawList) {
+  const result = [];
+  const seenNorms = new Set();
+  (rawList || []).filter(Boolean).forEach(raw => {
+    const canon = getCanonicalDepotName(raw);
+    const norm = normDepot(canon);
+    if (!seenNorms.has(norm)) {
+      seenNorms.add(norm);
+      result.push(canon);
+    }
+  });
+  return result;
 }
 
 function depotMatches(d1, d2) {
@@ -2825,12 +2885,13 @@ function renderAll() {
   $('flt_tot_done').textContent = totDone;
   $('flt_tot_maint').textContent = totMaint;
 
-  // Depots Submitted Status (strictly linked to Fleet Dispatch Log)
-  const allKnownDepots = Array.from(new Set([
+  // Depots Submitted Status (strictly linked to Fleet Dispatch Log, deduplicated & canonical)
+  const allKnownDepots = getUniqueCanonicalDepots([
     ...deps,
     ...(registeredVans || []).map(v => v.depot),
-    ...ents.map(r => r.depot)
-  ])).filter(Boolean);
+    ...ents.map(r => r.depot),
+    ...vehicles.map(v => v.depot)
+  ]);
 
   const depotStatuses = allKnownDepots.map(d => getDepotVanSubmissionStatus(d));
   const subCount = depotStatuses.filter(s => s.isSubmitted).length;
@@ -2945,8 +3006,9 @@ function renderAll() {
       if (!autoReason) autoReason = `কার্যক্রম নেই`;
     }
 
+    const cleanDepotName = getCanonicalDepotName(r.depot);
     return `<tr>
-      <td><b>${esc(r.depot)}</b></td>
+      <td><b>${esc(cleanDepotName)}</b></td>
       <td>${esc(r.category)} <span class="sub" style="font-size:11px;">(${u})</span></td>
       <td class="num">${fmt(o)} ${r.total_orders_count > 0 ? `<span class="sub" style="font-size:11px;">(${r.total_orders_count} SOs)</span>` : ''}</td>
       <td class="num">${fmt(v)}</td>
@@ -2960,10 +3022,12 @@ function renderAll() {
     </tr>`;
   }).join('') : `<tr><td colspan="11" class="center sub" style="padding:16px;">No entries recorded for this date${isCatFiltered ? ` (${selectedCat})` : ''}.</td></tr>`;
 
-  // 4. Fleet Live Tracking Table
-  const fleetDepotSet = new Set(deps);
-  vehicles.forEach(v => fleetDepotSet.add(v.depot));
-  const fleetList = [...fleetDepotSet];
+  // 4. Fleet Live Tracking Table (Canonical unified depots)
+  const fleetList = getUniqueCanonicalDepots([
+    ...deps,
+    ...vehicles.map(v => v.depot),
+    ...(registeredVans || []).map(v => v.depot)
+  ]);
 
   $('fleet_tb').innerHTML = fleetList.length ? fleetList.map(depName => {
     const v = vehicles.find(x => lc(x.depot) === lc(depName)) || { total_vehicles: 0, dispatched: 0, on_road: 0, delivered: 0, under_maintenance: 0, notes: '', by: '' };
@@ -3918,11 +3982,12 @@ function closeDepotsModal() {
   $('modal-depots-status').classList.add('hid');
 }
 function renderDepotsModal() {
-  const allKnown = Array.from(new Set([
+  const allKnown = getUniqueCanonicalDepots([
     ...deps,
     ...(registeredVans || []).map(v => v.depot),
-    ...ents.map(r => r.depot)
-  ])).filter(Boolean);
+    ...ents.map(r => r.depot),
+    ...vehicles.map(v => v.depot)
+  ]);
 
   const statuses = allKnown.map(dep => getDepotVanSubmissionStatus(dep));
   const subCount = statuses.filter(s => s.isSubmitted).length;
@@ -4266,7 +4331,11 @@ async function loadRegisteredVans(quiet = false) {
 function updateVanDepotDatalist() {
   const dl = $('depot_datalist');
   const filterSel = $('van-filter-depot');
-  const allKnown = deps.length ? deps : [...new Set(registeredVans.map(v => v.depot))];
+  const allKnown = getUniqueCanonicalDepots([
+    ...deps,
+    ...(registeredVans || []).map(v => v.depot),
+    ...ents.map(r => r.depot)
+  ]);
   if (dl) dl.innerHTML = allKnown.map(d => `<option value="${esc(d)}">`).join('');
   if (filterSel) {
     const prev = filterSel.value;

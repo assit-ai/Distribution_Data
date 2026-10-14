@@ -111,6 +111,28 @@ async function init() {
       godown_name text not null default '', godown_id text not null default '',
       ref_patterns text[] not null default '{}', is_default boolean not null default false,
       created_at timestamptz not null default now(), unique(category, depot_code));
+    -- Unify duplicate raw depot codes into canonical depot names
+    try {
+      await pool.query(`
+        delete from entries e1 using entries e2
+        where e1.id <> e2.id
+          and e1.entry_date = e2.entry_date
+          and e1.category = e2.category
+          and lower(e1.depot) in ('ashulia02', 'ashulia05', 'ashulia')
+          and lower(e2.depot) in ('ashulia-frozen');
+        update entries set depot = 'Ashulia-Frozen' where lower(depot) in ('ashulia02', 'ashulia05', 'ashulia');
+        update entries set depot = 'Chittagong' where lower(depot) in ('ctg01', 'ctg02', 'ctg05', 'ctg');
+        update entries set depot = 'Tejgaon' where lower(depot) in ('tejgaon01', 'tejgaon02', 'tejgaon03', 'tejgaon04', 'tg');
+        update entries set depot = 'Gazipur' where lower(depot) in ('gazipur01', 'gazipur');
+        update entries set depot = 'Mohakhali' where lower(depot) in ('mohakhali02', 'mhk');
+        update entries set depot = 'Jessore' where lower(depot) in ('jessore01', 'jessore02');
+        update entries set depot = 'Sylhet' where lower(depot) in ('sylhet01', 'sylhet02');
+        update entries set depot = 'DITF' where lower(depot) in ('ditf05');
+      `);
+    } catch (e) {
+      console.warn('[Depot Unification Notice]', e.message);
+    }
+
     create table if not exists erp_credentials_config(
       id int primary key default 1,
       url text not null default 'http://erp.paragon.com.bd',
@@ -325,16 +347,36 @@ async function allowedCategories(u) {
 function normDepot(s) {
   if (!s) return '';
   s = String(s).toLowerCase().trim();
-  // Preserve specific depot codes ending in two digits (e.g. tejgaon01, ctg02, tejgaon03)
-  if (/^[a-z]+[0-9]{2}$/.test(s)) return s;
-  if (s.includes('tejgaon') || /(^|[^a-z])(tg|02\.tg|01\.tg|03\.tg)($|[^a-z0-9])/.test(s)) return 'tejgaon';
+  if (s.includes('tejgaon') || /(^|[^a-z])(tg|02\.tg|01\.tg|03\.tg|04\.tg)($|[^a-z0-9])/.test(s)) return 'tejgaon';
   if (s.includes('chittagong') || s.includes('ctg')) return 'ctg';
   if (s.includes('gazipur')) return 'gazipur';
   if (s.includes('ashulia') || s.includes('factory') || s.includes('ash')) return 'ashulia';
   if (s.includes('mohakhali') || s.includes('ho godown') || s.includes('mhk') || /(^|[^a-z])ho($|[^a-z0-9])/.test(s)) return 'mohakhali';
   if (s.includes('jessore') || /(^|[^a-z])jd($|[^a-z0-9])/.test(s)) return 'jessore';
   if (s.includes('sylhet') || s.includes('syl')) return 'sylhet';
+  if (s.includes('ditf')) return 'ditf';
   return s.replace(/[^a-z0-9]/g, '').replace(/[0-9]+$/, '');
+}
+
+function getCanonicalDepotName(rawDepot, allowedList = []) {
+  if (!rawDepot) return '';
+  const str = String(rawDepot).trim();
+  if (Array.isArray(allowedList) && allowedList.length) {
+    const exact = allowedList.find(d => lc(d) === lc(str));
+    if (exact) return exact;
+    const matched = allowedList.find(d => depotMatches(d, str));
+    if (matched) return matched;
+  }
+  const n = normDepot(str);
+  if (n === 'ashulia') return 'Ashulia-Frozen';
+  if (n === 'ctg') return 'Chittagong';
+  if (n === 'tejgaon') return 'Tejgaon';
+  if (n === 'gazipur') return 'Gazipur';
+  if (n === 'mohakhali') return 'Mohakhali';
+  if (n === 'jessore') return 'Jessore';
+  if (n === 'sylhet') return 'Sylhet';
+  if (n === 'ditf') return 'DITF';
+  return str;
 }
 
 function depotMatches(d1, d2) {
@@ -551,7 +593,7 @@ app.post('/api/bulk/entries', auth, wrap(async (req, res) => {
     }
 
     const rawDepot = String(it.depot || '').trim();
-    const depot = findDepot(allowed, rawDepot) || (req.user.role === 'admin' ? rawDepot : null);
+    const depot = findDepot(allowed, rawDepot) || getCanonicalDepotName(rawDepot, allowed) || (req.user.role === 'admin' ? getCanonicalDepotName(rawDepot) : null);
     if (!depot) {
       skipped++;
       skippedDetails.push(`Unrecognized depot: "${rawDepot}"`);
