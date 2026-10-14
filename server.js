@@ -111,6 +111,15 @@ async function init() {
       godown_name text not null default '', godown_id text not null default '',
       ref_patterns text[] not null default '{}', is_default boolean not null default false,
       created_at timestamptz not null default now(), unique(category, depot_code));
+    create table if not exists erp_credentials_config(
+      id int primary key default 1,
+      url text not null default 'http://erp.paragon.com.bd',
+      username text not null default 'a0162e0019',
+      password text not null default 'pal.123456',
+      updated_at timestamptz not null default now());
+    insert into erp_credentials_config(id, url, username, password)
+    values(1, 'http://erp.paragon.com.bd', 'a0162e0019', 'pal.123456')
+    on conflict(id) do nothing;
   `);
 
   // Ensure entries table columns support decimals (e.g. Chicken in Kg)
@@ -131,9 +140,10 @@ async function init() {
     { name: 'Frozen', unit: 'Pkt' },
     { name: 'Chicken', unit: 'Kg' },
     { name: 'Egg', unit: 'Pcs' },
-    { name: 'Dairy', unit: 'Ltr' },
     { name: 'Tea', unit: 'Kg' },
-    { name: 'Sweets', unit: 'Kg' },
+    { name: 'Dry Food', unit: 'Pkt' },
+    { name: 'Sweets & Savory', unit: 'Pkt' },
+    { name: 'Dairy', unit: 'Ltr' },
     { name: 'Others', unit: 'Pcs' }
   ];
   for (let i = 0; i < defaultCats.length; i++) {
@@ -163,7 +173,19 @@ async function init() {
     { category: 'Chicken', depot_code: 'sylhet01', depot_name: '01. Process Sylhet Depot', godown_name: '01. Process Sylhet Depot', godown_id: 'G166', ref_patterns: ['01.SYLHET', '01. SYLHET', '01 SYLHET', '01SYL', '01.SYL'], is_default: false },
 
     // Egg
-    { category: 'Egg', depot_code: 'tejgaon03', depot_name: '03. Branded Egg HO / Tejgaon', godown_name: '03. Branded Egg HO Godown', godown_id: 'G9', ref_patterns: ['03HO', '003.HO', '03.HO', '03. HO', '03 HO', '003HO', '03.TG', '03TG'], is_default: true }
+    { category: 'Egg', depot_code: 'tejgaon03', depot_name: '03. Branded Egg HO / Tejgaon', godown_name: '03. Branded Egg HO Godown', godown_id: 'G9', ref_patterns: ['03HO', '003.HO', '03.HO', '03. HO', '03 HO', '003HO', '03.TG', '03TG'], is_default: true },
+
+    // Tea
+    { category: 'Tea', depot_code: 'tejgaon04', depot_name: '04. Tea Tejgaon Depot', godown_name: '04. Tea Tejgaon Depot', godown_id: 'G208', ref_patterns: ['04.TG', '04 TG', '04.TEJGAON', '04 TEJGAON', '04.TEA', 'TEA'], is_default: true },
+
+    // Dry Food
+    { category: 'Dry Food', depot_code: 'ashulia05', depot_name: '05. Dry Food Factory Godown', godown_name: '05. Dry Food Factory Godown', godown_id: 'G_DF_FAC', ref_patterns: ['05.FAC', '05.ASH', 'ASHULIA', 'FACTORY', '05 FACTORY', '05.FACTORY', '05.DF'], is_default: true },
+    { category: 'Dry Food', depot_code: 'ctg05', depot_name: '05. Dry Food Chittagong Depot', godown_name: '05. Dry Food Chittagong Depot', godown_id: 'G_DF_CTG', ref_patterns: ['05.CTG', '05 CTG', '05.CHITTAGONG', 'CHITTAGONG'], is_default: false },
+    { category: 'Dry Food', depot_code: 'ditf05', depot_name: '05. Dry Food DITF Depot', godown_name: '05. Dry Food DITF Depot', godown_id: 'G_DF_DITF', ref_patterns: ['05.DITF', '05 DITF', 'DITF'], is_default: false },
+
+    // Sweets & Savory
+    { category: 'Sweets & Savory', depot_code: 'ashulia05_sw', depot_name: '05. Sweets & Savory Factory Godown', godown_name: '05. Dry Food Factory Godown', godown_id: 'G_DF_FAC', ref_patterns: ['05.FAC', '05.ASH', 'ASHULIA', 'FACTORY', '05 FACTORY', '05.FACTORY', '05.DF'], is_default: true },
+    { category: 'Sweets & Savory', depot_code: 'ctg05_sw', depot_name: '05. Sweets & Savory Chittagong Depot', godown_name: '05. Dry Food Chittagong Depot', godown_id: 'G_DF_CTG', ref_patterns: ['05.CTG', '05 CTG', '05.CHITTAGONG', 'CHITTAGONG'], is_default: false }
   ];
 
   for (const m of defaultMappings) {
@@ -189,6 +211,65 @@ async function init() {
       [lc(u), await bcrypt.hash(p, 10), 'Admin', 'admin']);
     console.log('First admin user created:', lc(u));
   }
+}
+
+const CREDS_FILE_PATH = path.join(__dirname, 'erp_credentials.json');
+
+async function getErpCredentials() {
+  let creds = { url: 'http://erp.paragon.com.bd', username: 'a0162e0019', password: 'pal.123456', updated_at: new Date().toISOString() };
+  try {
+    const r = await pool.query('select url, username, password, updated_at from erp_credentials_config where id=1');
+    if (r.rows[0]) {
+      creds = {
+        url: r.rows[0].url || creds.url,
+        username: r.rows[0].username || creds.username,
+        password: r.rows[0].password || creds.password,
+        updated_at: r.rows[0].updated_at
+      };
+    }
+  } catch (e) {
+    if (fs.existsSync(CREDS_FILE_PATH)) {
+      try {
+        const fileData = JSON.parse(fs.readFileSync(CREDS_FILE_PATH, 'utf8'));
+        creds = { ...creds, ...fileData };
+      } catch (err) {}
+    }
+  }
+  return creds;
+}
+
+async function saveErpCredentials(url, username, password) {
+  const cleanUrl = String(url || 'http://erp.paragon.com.bd').trim().replace(/\/+$/, '');
+  const cleanUser = String(username || '').trim();
+  const cleanPass = String(password || '').trim();
+  const now = new Date().toISOString();
+
+  try {
+    await pool.query(`
+      insert into erp_credentials_config(id, url, username, password, updated_at)
+      values(1, $1, $2, $3, now())
+      on conflict(id) do update set
+        url = excluded.url,
+        username = excluded.username,
+        password = excluded.password,
+        updated_at = now()
+    `, [cleanUrl, cleanUser, cleanPass]);
+  } catch (e) {
+    console.warn('[ERP Creds] Warning saving to DB:', e.message);
+  }
+
+  try {
+    fs.writeFileSync(CREDS_FILE_PATH, JSON.stringify({
+      url: cleanUrl,
+      username: cleanUser,
+      password: cleanPass,
+      updated_at: now
+    }, null, 2), 'utf8');
+  } catch (e) {
+    console.warn('[ERP Creds] Warning writing to file:', e.message);
+  }
+
+  return { url: cleanUrl, username: cleanUser, password: cleanPass, updated_at: now };
 }
 
 async function syncDepotMappingsToFile() {
@@ -547,7 +628,17 @@ app.post('/api/admin/sync-erp', auth, admin, wrap(async (req, res) => {
 
   let output = '';
   let errOutput = '';
-  const proc = spawn(pythonCmd, args, { cwd: __dirname });
+  const erpCreds = await getErpCredentials();
+  const proc = spawn(pythonCmd, args, {
+    cwd: __dirname,
+    env: {
+      ...process.env,
+      POLOXY_URL: erpCreds.url,
+      POLOXY_USER: erpCreds.username,
+      POLOXY_PASS: erpCreds.password,
+      PYTHONUNBUFFERED: '1'
+    }
+  });
 
   proc.stdout.on('data', d => { output += d.toString(); });
   proc.stderr.on('data', d => { errOutput += d.toString(); });
@@ -778,10 +869,17 @@ app.post('/api/auto-sync', auth, admin, wrap(async (req, res) => {
   const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
   let stdoutData = '', stderrData = '';
   
+  const erpCredsStream = await getErpCredentials();
   const args = [scriptPath, `--start=${poloxyStart}`, `--end=${poloxyEnd}`, `--category=${catParam}`, '--json'];
   const child = spawn(pythonCmd, args, {
     cwd: __dirname,
-    env: { ...process.env, PYTHONUNBUFFERED: '1' }
+    env: {
+      ...process.env,
+      POLOXY_URL: erpCredsStream.url,
+      POLOXY_USER: erpCredsStream.username,
+      POLOXY_PASS: erpCredsStream.password,
+      PYTHONUNBUFFERED: '1'
+    }
   });
 
   child.stdout.on('data', chunk => { stdoutData += chunk.toString(); });
@@ -931,6 +1029,62 @@ app.delete('/api/erp-depots/:id', auth, admin, wrap(async (req, res) => {
   await pool.query('delete from erp_depot_mappings where id=$1', [id]);
   await syncDepotMappingsToFile();
   res.json({ ok: true });
+}));
+
+app.get('/api/erp-credentials', auth, admin, wrap(async (req, res) => {
+  const creds = await getErpCredentials();
+  res.json({ ok: true, credentials: creds });
+}));
+
+app.post('/api/erp-credentials', auth, admin, wrap(async (req, res) => {
+  const { url, username, password } = req.body || {};
+  if (!username) return res.status(400).json({ error: 'ERP User ID / Username is required' });
+  if (!password) return res.status(400).json({ error: 'ERP Password is required' });
+
+  const updated = await saveErpCredentials(url, username, password);
+  res.json({ ok: true, credentials: updated, message: 'Poloxy ERP credentials updated successfully ✓' });
+}));
+
+app.post('/api/erp-test-login', auth, admin, wrap(async (req, res) => {
+  let { url, username, password } = req.body || {};
+  if (!username || !password) {
+    const creds = await getErpCredentials();
+    url = url || creds.url;
+    username = username || creds.username;
+    password = password || creds.password;
+  }
+  const cleanUrl = String(url || 'http://erp.paragon.com.bd').trim().replace(/\/+$/, '');
+
+  try {
+    const loginUrl = `${cleanUrl}/Account/LogOn`;
+    const bodyParams = new URLSearchParams({
+      UserName: username,
+      Password: password,
+      RememberMe: 'false'
+    });
+
+    const response = await fetch(loginUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
+      },
+      body: bodyParams.toString(),
+      redirect: 'manual'
+    });
+
+    const setCookie = response.headers.get('set-cookie') || '';
+    const location = response.headers.get('location') || '';
+    const isSuccess = location.includes('/Home') || setCookie.includes('.ASPXAUTH') || setCookie.includes('ASP.NET_SessionId');
+
+    if (isSuccess || response.status === 302) {
+      return res.json({ ok: true, message: `Connected & Authenticated successfully with Poloxy ERP as "${username}"! ✓` });
+    } else {
+      return res.status(400).json({ ok: false, error: 'Login rejected by Poloxy ERP. Please verify Username and Password.' });
+    }
+  } catch (err) {
+    return res.status(500).json({ ok: false, error: `Could not reach ERP server at ${cleanUrl}: ${err.message}` });
+  }
 }));
 
 app.post('/api/registered-vans', auth, admin, wrap(async (req, res) => {

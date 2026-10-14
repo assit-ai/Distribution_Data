@@ -17,18 +17,22 @@ set /p END_DATE="End Date [DD/MM/YYYY]: "
 
 echo.
 echo Select Category to Sync:
-echo   1. All Categories (Frozen + Chicken + Egg + Tea) [Default]
+echo   1. All Categories (Frozen + Chicken + Egg + Tea + Dry Food + Sweets & Savory) [Default]
 echo   2. Frozen Foods
 echo   3. Process Chicken
 echo   4. Branded Eggs
 echo   5. Tea
-set /p CAT_CHOICE="Enter choice [1-5, Default=1]: "
+echo   6. Dry Food
+echo   7. Sweets & Savory
+set /p CAT_CHOICE="Enter choice [1-7, Default=1]: "
 
 set CAT_ARG=all
 if "%CAT_CHOICE%"=="2" set CAT_ARG=Frozen
 if "%CAT_CHOICE%"=="3" set CAT_ARG=Chicken
 if "%CAT_CHOICE%"=="4" set CAT_ARG=Egg
 if "%CAT_CHOICE%"=="5" set CAT_ARG=Tea
+if "%CAT_CHOICE%"=="6" set CAT_ARG=Dry Food
+if "%CAT_CHOICE%"=="7" set "CAT_ARG=Sweets & Savory"
 
 echo.
 echo Running Automated Poloxy Extraction (Category: %CAT_ARG%)...
@@ -41,12 +45,12 @@ if exist "Paragon_ERP_Sync.exe" (
 )
 
 if "%START_DATE%"=="" (
-    %RUNNER% --category=%CAT_ARG%
+    %RUNNER% "--category=%CAT_ARG%"
 ) else (
     if "%END_DATE%"=="" (
-        %RUNNER% %START_DATE% --category=%CAT_ARG%
+        %RUNNER% %START_DATE% "--category=%CAT_ARG%"
     ) else (
-        %RUNNER% %START_DATE% %END_DATE% --category=%CAT_ARG%
+        %RUNNER% %START_DATE% %END_DATE% "--category=%CAT_ARG%"
     )
 )
 

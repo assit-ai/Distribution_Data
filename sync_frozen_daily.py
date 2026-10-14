@@ -33,9 +33,32 @@ try:
 except ImportError:
     openpyxl = None
 
-BASE_URL = os.environ.get("POLOXY_URL", "http://erp.paragon.com.bd").rstrip('/')
-USERNAME = os.environ.get("POLOXY_USER", "a0162e0019")
-PASSWORD = os.environ.get("POLOXY_PASS", "pal.123456")
+BASE_URL = "http://erp.paragon.com.bd"
+USERNAME = "a0162e0019"
+PASSWORD = "pal.123456"
+
+# Check for dynamic credentials file configured via web portal
+_CREDS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "erp_credentials.json")
+if os.path.exists(_CREDS_FILE):
+    try:
+        with open(_CREDS_FILE, "r", encoding="utf-8") as _cf:
+            _cdata = json.load(_cf)
+            if _cdata.get("url"):
+                BASE_URL = _cdata["url"].rstrip('/')
+            if _cdata.get("username"):
+                USERNAME = str(_cdata["username"]).strip()
+            if _cdata.get("password"):
+                PASSWORD = str(_cdata["password"]).strip()
+    except Exception as _ce:
+        pass
+
+# Environment variables still take highest priority if explicitly passed
+if os.environ.get("POLOXY_URL"):
+    BASE_URL = os.environ.get("POLOXY_URL").rstrip('/')
+if os.environ.get("POLOXY_USER"):
+    USERNAME = os.environ.get("POLOXY_USER")
+if os.environ.get("POLOXY_PASS"):
+    PASSWORD = os.environ.get("POLOXY_PASS")
 
 # Default Built-in Category & Depot Configurations
 DEFAULT_CONFIG = {
@@ -158,8 +181,102 @@ DEFAULT_CONFIG = {
                 'ref_patterns': ['04.TG', '04 TG', '04.TEJGAON', '04 TEJGAON', '04.TEA', 'TEA']
             }
         }
+    },
+    'Dry Food': {
+        'name': '05. Dry Foods',
+        'branch_id': 'B0005',
+        'item_group': 'CUT-Up-Part',
+        'group_id': '17',
+        'unit': 'Pkt',
+        'default_depot': 'ashulia05',
+        'dn_qty_field': 'qty',
+        'so_qty_col': 10,
+        'exclude_sweets_savory': True,
+        'depots': {
+            'ashulia05': {
+                'name': '05. Dry Food Factory Godown',
+                'godown_id': 'G_DF_FAC',
+                'ref_patterns': ['05.FAC', '05.ASH', 'ASHULIA', 'FACTORY', '05 FACTORY', '05.FACTORY', '05.DF']
+            },
+            'ctg05': {
+                'name': '05. Dry Food Chittagong Depot',
+                'godown_id': 'G_DF_CTG',
+                'ref_patterns': ['05.CTG', '05 CTG', '05.CHITTAGONG', 'CHITTAGONG']
+            },
+            'ditf05': {
+                'name': '05. Dry Food DITF Depot',
+                'godown_id': 'G_DF_DITF',
+                'ref_patterns': ['05.DITF', '05 DITF', 'DITF']
+            }
+        }
+    },
+    'Sweets & Savory': {
+        'name': '05. Dry Foods',
+        'branch_id': 'B0005',
+        'item_group': 'CUT-Up-Part',
+        'group_id': '17',
+        'unit': 'Pkt',
+        'default_depot': 'ashulia05',
+        'dn_qty_field': 'qty',
+        'so_qty_col': 10,
+        'only_sweets_savory': True,
+        'depots': {
+            'ashulia05': {
+                'name': '05. Dry Food Factory Godown',
+                'godown_id': 'G_DF_FAC',
+                'ref_patterns': ['05.FAC', '05.ASH', 'ASHULIA', 'FACTORY', '05 FACTORY', '05.FACTORY', '05.DF']
+            },
+            'ctg05': {
+                'name': '05. Dry Food Chittagong Depot',
+                'godown_id': 'G_DF_CTG',
+                'ref_patterns': ['05.CTG', '05 CTG', '05.CHITTAGONG', 'CHITTAGONG']
+            },
+            'ditf05': {
+                'name': '05. Dry Food DITF Depot',
+                'godown_id': 'G_DF_DITF',
+                'ref_patterns': ['05.DITF', '05 DITF', 'DITF']
+            }
+        }
     }
 }
+
+SWEETS_SAVORY_ITEMS_CACHE = None
+
+def get_sweets_savory_items():
+    global SWEETS_SAVORY_ITEMS_CACHE
+    if SWEETS_SAVORY_ITEMS_CACHE is not None:
+        return SWEETS_SAVORY_ITEMS_CACHE
+    json_path = os.path.join(os.path.dirname(__file__), 'sweets_savory_items.json')
+    items = set()
+    if os.path.exists(json_path):
+        try:
+            with open(json_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                items = set(x.strip() for x in data if isinstance(x, str))
+        except Exception:
+            pass
+    SWEETS_SAVORY_ITEMS_CACHE = items
+    return items
+
+def is_sweets_or_savory(item_name):
+    clean = str(item_name or '').strip()
+    if not clean:
+        return False
+    exact_set = get_sweets_savory_items()
+    if clean in exact_set:
+        return True
+    low = clean.lower()
+    # Toast, bread, cake, cookies, sauce belong to Dry Food
+    if any(k in low for k in ['toast', 'bread', 'cake', 'cookie', 'biscuit', 'sauce', 'atta', 'tea bag', 'puffed rice', 'shemai']):
+        return False
+    # Check sweet & savory keywords
+    if any(k in low for k in [
+        'jamun', 'jaam', 'mohon', 'laddu', 'shondesh', 'sandesh', 'roshgolla', 'rasgulla',
+        'curd', 'balushai', 'baklava', 'aflatun', 'chom chom', 'chomchom', 'chana', 'sagor',
+        'patties', 'roll', 'burger', 'sandwich', 'nimki', 'chanachur', 'dal bhaja', 'fried peas'
+    ]):
+        return True
+    return False
 
 def load_extended_configs():
     """Load any custom or newly added depot mappings from depot_mappings.json (managed by admin web portal)."""
@@ -301,7 +418,7 @@ class PoloxyClient:
             pass
         print(" -> ERP Context established.")
 
-    def fetch_godown_stock_single(self, godown_name, godown_id, item_group, group_id, date_str, is_egg=False):
+    def fetch_godown_stock_single(self, godown_name, godown_id, item_group, group_id, date_str, is_egg=False, only_sweets_savory=False, exclude_sweets_savory=False):
         stock_url = f"{self.base_url}/COMMON/GodownItemStockReport"
         form_data = {
             'item_godown_stock_radio': 'Godownwise',
@@ -345,6 +462,10 @@ class PoloxyClient:
                 name = cells[1] if len(cells) > 1 else ''
                 closing_qty = clean_num(cells[12])
                 if code and not any(w in code.lower() for w in ['item code', 'total', 'type', 'quantity']):
+                    if only_sweets_savory and not is_sweets_or_savory(name):
+                        continue
+                    if exclude_sweets_savory and is_sweets_or_savory(name):
+                        continue
                     if is_egg:
                         # Egg multiplier rule: If SKU has "12 pcs" / "12-pack" / "12 pcs pkt" in name, multiply by 12
                         lower_name = name.lower()
@@ -363,13 +484,15 @@ class PoloxyClient:
         grp = cat_conf['item_group']
         grp_id = cat_conf['group_id']
         is_egg = bool(cat_conf.get('egg_mode'))
+        only_sw = bool(cat_conf.get('only_sweets_savory'))
+        excl_sw = bool(cat_conf.get('exclude_sweets_savory'))
 
-        tot = self.fetch_godown_stock_single(godown_name, godown_id, grp, grp_id, date_str, is_egg=is_egg)
+        tot = self.fetch_godown_stock_single(godown_name, godown_id, grp, grp_id, date_str, is_egg=is_egg, only_sweets_savory=only_sw, exclude_sweets_savory=excl_sw)
 
         # If depot has additional associated godowns (e.g. tejgaon03 HO + Tejgaon Depot)
         for add_g in depot_conf.get('additional_godowns', []):
             try:
-                tot += self.fetch_godown_stock_single(add_g['name'], add_g['godown_id'], grp, grp_id, date_str, is_egg=is_egg)
+                tot += self.fetch_godown_stock_single(add_g['name'], add_g['godown_id'], grp, grp_id, date_str, is_egg=is_egg, only_sweets_savory=only_sw, exclude_sweets_savory=excl_sw)
             except Exception as e:
                 print(f"    [!] Error querying additional godown {add_g['name']}: {e}")
 
@@ -453,6 +576,12 @@ class PoloxyClient:
             so_no = cells[3] if len(cells) > 3 else ''
             ref_no = cells[4] if len(cells) > 4 else ''
             item_name = cells[7] if len(cells) > 7 else ''
+
+            if cat_conf.get('only_sweets_savory') and not is_sweets_or_savory(item_name):
+                continue
+            if cat_conf.get('exclude_sweets_savory') and is_sweets_or_savory(item_name):
+                continue
+
             qty = clean_num(cells[qty_col]) if len(cells) > qty_col else 0.0
             dn_no = cells[27] if len(cells) > 27 else ''
             dn_qty = clean_num(cells[29]) if len(cells) > 29 else 0.0
@@ -646,6 +775,12 @@ def run_category_sync(client, cat_key, cat_conf, start_date_str, end_date_str, s
         if not depot or depot not in depots_dict:
             continue
 
+        item_desc = str(row.get('i_des') or '').strip()
+        if cat_conf.get('only_sweets_savory') and not is_sweets_or_savory(item_desc):
+            continue
+        if cat_conf.get('exclude_sweets_savory') and is_sweets_or_savory(item_desc):
+            continue
+
         # Extract quantity based on category field (Primary 'qty' or Secondary 'sec_qty')
         qty = clean_num(row.get(qty_field, 0.0))
         if qty == 0.0 and qty_field != 'qty':
@@ -784,17 +919,22 @@ def run_sync_pipeline(start_date_str=None, end_date_str=None, category_filter='a
     client = PoloxyClient()
     client.authenticate()
 
+    cat_lower = category_filter.lower().strip()
     cats_to_run = []
-    if category_filter.lower() in ('all', ''):
-        cats_to_run = ['Frozen', 'Chicken', 'Egg']
+    if cat_lower in ('all', ''):
+        cats_to_run = ['Frozen', 'Chicken', 'Egg', 'Tea', 'Dry Food', 'Sweets & Savory']
+    elif cat_lower in ('dry food', 'dry foods', 'dry'):
+        cats_to_run = ['Dry Food']
+    elif cat_lower in ('sweets', 'sweet', 'sweets & savory', 'savory', 'sweets & savoury'):
+        cats_to_run = ['Sweets & Savory']
     else:
         for c in configs:
-            if c.lower() == category_filter.lower():
+            if c.lower() == cat_lower:
                 cats_to_run.append(c)
 
     if not cats_to_run:
         print(f"[!] Warning: Category '{category_filter}' not found in configuration. Defaulting to all.")
-        cats_to_run = ['Frozen', 'Chicken', 'Egg']
+        cats_to_run = ['Frozen', 'Chicken', 'Egg', 'Tea', 'Dry Food', 'Sweets & Savory']
 
     all_results = []
     if start_dt == end_dt:
@@ -855,12 +995,16 @@ if __name__ == '__main__':
 
     pos_args = []
     for arg in sys.argv[1:]:
-        if arg == '--json':
+        if arg in ('--help', '-h'):
+            print("Usage: python sync_frozen_daily.py [START_DATE] [END_DATE] [--category=CAT] [--json] [--excel]")
+            print("Categories: all, Frozen, Chicken, Egg, Tea, 'Dry Food', 'Sweets & Savory'")
+            sys.exit(0)
+        elif arg == '--json':
             json_mode = True
         elif arg == '--excel':
             export_excel = True
         elif arg.startswith('--category='):
-            category_filter = arg.split('=', 1)[1].strip()
+            category_filter = arg.split('=', 1)[1].strip().strip('"').strip("'")
         elif arg.startswith('--start='):
             start_date = arg.split('=', 1)[1].strip()
         elif arg.startswith('--end='):
@@ -880,19 +1024,21 @@ if __name__ == '__main__':
         today_str = datetime.now().strftime("%d/%m/%Y")
         print("=" * 70)
         print("          PARAGON AGRO LTD. - ERP DAILY AUTO SYNC")
-        print("          Categories: Frozen Foods, Process Chicken, Branded Eggs, Tea")
+        print("          Categories: Frozen, Chicken, Egg, Tea, Dry Food, Sweets & Savory")
         print("=" * 70)
         inp = input(f"Enter Start Date [DD/MM/YYYY] (Press Enter for Today: {today_str}): ").strip()
         start_date = inp if inp else today_str
         inp_end = input(f"Enter End Date [DD/MM/YYYY] (Press Enter for same date): ").strip()
         end_date = inp_end if inp_end else start_date
         print("\nSelect Category to Sync:")
-        print("  1. All Categories (Frozen + Chicken + Egg + Tea) [Default]")
+        print("  1. All Categories (Frozen + Chicken + Egg + Tea + Dry Food + Sweets & Savory) [Default]")
         print("  2. Frozen Foods")
         print("  3. Process Chicken")
         print("  4. Branded Eggs")
         print("  5. Tea")
-        c_choice = input("Enter choice [1-5, Default=1]: ").strip()
+        print("  6. Dry Food")
+        print("  7. Sweets & Savory")
+        c_choice = input("Enter choice [1-7, Default=1]: ").strip()
         if c_choice == '2':
             category_filter = 'Frozen'
         elif c_choice == '3':
@@ -901,6 +1047,10 @@ if __name__ == '__main__':
             category_filter = 'Egg'
         elif c_choice == '5':
             category_filter = 'Tea'
+        elif c_choice == '6':
+            category_filter = 'Dry Food'
+        elif c_choice == '7':
+            category_filter = 'Sweets & Savory'
         else:
             category_filter = 'all'
         export_excel = True
