@@ -519,9 +519,11 @@ class PoloxyClient:
 
         return tot
 
-    def fetch_sales_orders(self, cat_conf, booking_dates, end_date_str=None, dn_order_nos=None):
+    def fetch_sales_orders(self, cat_conf, booking_dates, end_date_str=None, target_start_dt=None, target_end_dt=None, dn_order_nos=None, dn_challan_nos=None):
         if dn_order_nos is None:
             dn_order_nos = set()
+        if dn_challan_nos is None:
+            dn_challan_nos = set()
         branch_name = cat_conf['name']
         branch_id = cat_conf['branch_id']
         qty_col = cat_conf.get('so_qty_col', 10)
@@ -540,14 +542,23 @@ class PoloxyClient:
         elif isinstance(booking_dates, list) and booking_dates and isinstance(booking_dates[0], str):
             booking_dates = [datetime.strptime(d, "%d/%m/%Y").date() for d in booking_dates]
 
-        start_d = min(booking_dates)
-        end_d = max(booking_dates)
+        t_start = target_start_dt.date() if isinstance(target_start_dt, datetime) else target_start_dt
+        t_end = target_end_dt.date() if isinstance(target_end_dt, datetime) else target_end_dt
+
+        # Combine booking dates and target delivery dates for full reconciliation window
+        all_query_dates = list(booking_dates)
+        if t_start and t_end:
+            cur = t_start
+            while cur <= t_end:
+                all_query_dates.append(cur)
+                cur += timedelta(days=1)
+
+        start_d = min(all_query_dates)
+        end_d = max(all_query_dates)
         start_date_str = start_d.strftime("%d/%m/%Y")
         end_date_str = end_d.strftime("%d/%m/%Y")
-        booking_dates_set = set(booking_dates)
 
-        dates_repr = ', '.join(d.strftime('%d/%m/%Y') for d in booking_dates)
-        print(f"[*] Fetching Sales Orders for {branch_name} (Booking Dates: {dates_repr})...")
+        print(f"[*] Fetching Sales Orders for {branch_name} (Smart Reconciliation Window: {start_date_str} to {end_date_str})...")
         so_url = f"{self.base_url}/COMMON/dt_sale_order_status_report"
         form_data = {
             'branch_name': branch_name,
@@ -571,9 +582,11 @@ class PoloxyClient:
         pending_sos_by_depot = {k: 0 for k in depots_dict}
         pending_qty_by_depot = {k: 0.0 for k in depots_dict}
         pending_so_numbers_by_depot = {k: [] for k in depots_dict}
+        same_day_sos_by_depot = {k: 0 for k in depots_dict}
+        next_day_sos_by_depot = {k: 0 for k in depots_dict}
 
         # Group rows by unique SO number to accurately count unique sales orders
-        so_grouped = defaultdict(lambda: {'so_qty': 0.0, 'dn_nos': set(), 'dn_qty': 0.0, 'depot': None, 'ref_no': ''})
+        so_grouped = defaultdict(lambda: {'so_date': None, 'dn_date': None, 'so_qty': 0.0, 'dn_nos': set(), 'dn_qty': 0.0, 'depot': None, 'ref_no': ''})
 
         trs = re.findall(r'<tr[^>]*>.*?</tr>', html, re.DOTALL | re.IGNORECASE)
         for tr in trs:
@@ -581,18 +594,15 @@ class PoloxyClient:
             if len(cells) < 12 or cells[0] == 'Sr.No.' or 'Internet Explorer' in cells[0]:
                 continue
 
-            # Filter order date to ensure it strictly belongs to target booking dates
             order_date_raw = cells[1] if len(cells) > 1 else ''
+            so_dt = None
             if order_date_raw:
-                so_dt = None
                 for fmt_cand in ('%d/%m/%Y', '%d/%m/%y', '%Y-%m-%d'):
                     try:
                         so_dt = datetime.strptime(order_date_raw, fmt_cand).date()
                         break
                     except ValueError:
                         pass
-                if so_dt and (so_dt not in booking_dates_set):
-                    continue
 
             so_no = cells[3] if len(cells) > 3 else ''
             ref_no = cells[4] if len(cells) > 4 else ''
@@ -605,6 +615,15 @@ class PoloxyClient:
 
             qty = clean_num(cells[qty_col]) if len(cells) > qty_col else 0.0
             dn_no = cells[27] if len(cells) > 27 else ''
+            dn_date_raw = cells[28] if len(cells) > 28 else ''
+            dn_dt = None
+            if dn_date_raw:
+                for fmt_cand in ('%d/%m/%Y', '%d/%m/%y', '%Y-%m-%d'):
+                    try:
+                        dn_dt = datetime.strptime(dn_date_raw, fmt_cand).date()
+                        break
+                    except ValueError:
+                        pass
             dn_qty = clean_num(cells[29]) if len(cells) > 29 else 0.0
 
             # Egg multiplier rule for sales orders: 12 pcs PKT -> multiply by 12
@@ -616,33 +635,86 @@ class PoloxyClient:
 
             depot = match_depot_from_ref(ref_no, depots_dict, default_depot=default_depot)
             
-            # Group by unique Sales Order Number
             so_key = so_no if so_no else f"{ref_no}_{len(so_grouped)}"
             so_grouped[so_key]['so_qty'] += qty
             so_grouped[so_key]['dn_qty'] += dn_qty
+            if so_dt:
+                so_grouped[so_key]['so_date'] = so_dt
+            if dn_dt:
+                so_grouped[so_key]['dn_date'] = dn_dt
             if dn_no:
                 so_grouped[so_key]['dn_nos'].add(dn_no)
             so_grouped[so_key]['depot'] = depot
             so_grouped[so_key]['ref_no'] = ref_no
 
+        # Smart Fulfillment Reconciliation Algorithm
+        same_day_total = 0
+        next_day_total = 0
+        prior_closed_total = 0
+        pending_total = 0
+        advance_total = 0
+
         for so_key, so_info in so_grouped.items():
             d = so_info['depot']
-            if d and d in depots_dict:
-                orders_by_depot[d] += so_info['so_qty']
-                total_sos_by_depot[d] += 1
-                # Check if this SO has a delivery note / challan issued
-                has_dn = bool(so_info['dn_nos']) or (so_key in dn_order_nos)
-                if not has_dn:
+            if not d or d not in depots_dict:
+                continue
+
+            so_d = so_info['so_date']
+            dn_d = so_info['dn_date']
+
+            # Check if this SO is fulfilled in target delivery window
+            has_target_dn = (so_key in dn_order_nos) or bool(so_info['dn_nos'] & dn_challan_nos)
+            if dn_d and t_start and t_end and (t_start <= dn_d <= t_end):
+                has_target_dn = True
+
+            # 1. Check if already delivered PRIOR to target delivery window (e.g. booked 14th & delivered 14th same-day)
+            if dn_d and t_start and (dn_d < t_start) and (not has_target_dn) and (so_d and so_d < t_start):
+                prior_closed_total += 1
+                continue # Delivered yesterday, not part of today's workload
+
+            # 2. Same-day Order & Delivery (booked within target delivery window)
+            if so_d and t_start and so_d >= t_start:
+                if has_target_dn:
+                    same_day_total += 1
+                    same_day_sos_by_depot[d] += 1
+                    orders_by_depot[d] += so_info['so_qty']
+                    total_sos_by_depot[d] += 1
+                else:
+                    # Booked today, but not delivered today -> Advance booking for tomorrow
+                    advance_total += 1
+                    continue
+
+            # 3. Next-Day or Backlog Order (booked on D-1 or earlier)
+            else:
+                if has_target_dn:
+                    next_day_total += 1
+                    next_day_sos_by_depot[d] += 1
+                    orders_by_depot[d] += so_info['so_qty']
+                    total_sos_by_depot[d] += 1
+                else:
+                    # True pending order: booked D-1, but no challan issued on Day T
+                    pending_total += 1
+                    orders_by_depot[d] += so_info['so_qty']
+                    total_sos_by_depot[d] += 1
                     pending_sos_by_depot[d] += 1
                     pending_qty_by_depot[d] += so_info['so_qty']
                     pending_so_numbers_by_depot[d].append(so_key)
+
+        print(f" -> Smart Reconciliation Breakdown:")
+        print(f"    - Same-Day Fulfilled Orders (T -> T): {same_day_total}")
+        print(f"    - Next-Day Fulfilled Orders (T-1 -> T): {next_day_total}")
+        print(f"    - True Pending Unfulfilled Orders: {pending_total}")
+        print(f"    - Excluded Prior Same-Day Orders (Closed T-1): {prior_closed_total}")
+        print(f"    - Advance Bookings (For T+1): {advance_total}")
 
         return {
             'orders_by_depot': orders_by_depot,
             'total_sos_by_depot': total_sos_by_depot,
             'pending_sos_by_depot': pending_sos_by_depot,
             'pending_qty_by_depot': pending_qty_by_depot,
-            'pending_so_numbers_by_depot': pending_so_numbers_by_depot
+            'pending_so_numbers_by_depot': pending_so_numbers_by_depot,
+            'same_day_sos_by_depot': same_day_sos_by_depot,
+            'next_day_sos_by_depot': next_day_sos_by_depot
         }
 
     def fetch_delivery_notes(self, cat_conf, start_date_str, end_date_str):
@@ -721,14 +793,24 @@ def run_category_sync(client, cat_key, cat_conf, start_date_str, end_date_str, s
     print(f" -> Found {len(delivery_rows):,} delivery transactions from ERP response.")
 
     dn_order_nos = set()
+    dn_challan_nos = set()
     for r in delivery_rows:
         ord_no = (r.get('order_no') or '').strip()
         ref_id = (r.get('reference_id') or r.get('tracking_no') or '').strip()
-        if ord_no and ref_id:
+        if ord_no:
             dn_order_nos.add(ord_no)
+        if ref_id:
+            dn_challan_nos.add(ref_id)
 
-    # 2. Fetch Sales Orders for the corresponding booking dates and cross-reference with DN numbers
-    so_data = client.fetch_sales_orders(cat_conf, booking_dates, dn_order_nos=dn_order_nos)
+    # 2. Fetch Sales Orders with Smart Reconciliation Engine (handles both same-day & next-day fulfillments)
+    so_data = client.fetch_sales_orders(
+        cat_conf,
+        booking_dates,
+        target_start_dt=start_dt,
+        target_end_dt=end_dt,
+        dn_order_nos=dn_order_nos,
+        dn_challan_nos=dn_challan_nos
+    )
     if isinstance(so_data, dict) and 'orders_by_depot' in so_data:
         orders_map = so_data['orders_by_depot']
         total_sos_map = so_data['total_sos_by_depot']
