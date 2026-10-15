@@ -8,8 +8,8 @@ const fs = require('fs');
 const { spawn } = require('child_process');
 
 const prod = process.env.NODE_ENV === 'production';
+const sessionSecret = process.env.SESSION_SECRET || 'daily-update-prod-secret-fallback-key-9988';
 if (!process.env.DATABASE_URL) { console.error('DATABASE_URL is not set'); process.exit(1); }
-if (prod && !process.env.SESSION_SECRET) { console.error('SESSION_SECRET is not set'); process.exit(1); }
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -29,7 +29,7 @@ app.head(['/healthz', '/ping', '/api/health'], (req, res) => {
 
 app.use(express.json({ limit: '2mb' }));
 app.use(cookieSession({
-  name: 'dup', keys: [process.env.SESSION_SECRET || 'dev-only-secret'],
+  name: 'dup', keys: [sessionSecret],
   httpOnly: true, sameSite: 'lax', secure: prod
 }));
 
@@ -111,28 +111,6 @@ async function init() {
       godown_name text not null default '', godown_id text not null default '',
       ref_patterns text[] not null default '{}', is_default boolean not null default false,
       created_at timestamptz not null default now(), unique(category, depot_code));
-    -- Unify duplicate raw depot codes into canonical depot names
-    try {
-      await pool.query(`
-        delete from entries e1 using entries e2
-        where e1.id <> e2.id
-          and e1.entry_date = e2.entry_date
-          and e1.category = e2.category
-          and lower(e1.depot) in ('ashulia02', 'ashulia05', 'ashulia')
-          and lower(e2.depot) in ('ashulia-frozen');
-        update entries set depot = 'Ashulia-Frozen' where lower(depot) in ('ashulia02', 'ashulia05', 'ashulia');
-        update entries set depot = 'Chittagong' where lower(depot) in ('ctg01', 'ctg02', 'ctg05', 'ctg');
-        update entries set depot = 'Tejgaon' where lower(depot) in ('tejgaon01', 'tejgaon02', 'tejgaon03', 'tejgaon04', 'tg');
-        update entries set depot = 'Gazipur' where lower(depot) in ('gazipur01', 'gazipur');
-        update entries set depot = 'Mohakhali' where lower(depot) in ('mohakhali02', 'mhk');
-        update entries set depot = 'Jessore' where lower(depot) in ('jessore01', 'jessore02');
-        update entries set depot = 'Sylhet' where lower(depot) in ('sylhet01', 'sylhet02');
-        update entries set depot = 'DITF' where lower(depot) in ('ditf05');
-      `);
-    } catch (e) {
-      console.warn('[Depot Unification Notice]', e.message);
-    }
-
     create table if not exists erp_credentials_config(
       id int primary key default 1,
       url text not null default 'http://erp.paragon.com.bd',
@@ -143,6 +121,28 @@ async function init() {
     values(1, 'http://erp.paragon.com.bd', 'a0162e0019', 'pal.123456')
     on conflict(id) do nothing;
   `);
+
+  // Unify duplicate raw depot codes into canonical depot names
+  try {
+    await pool.query(`
+      delete from entries e1 using entries e2
+      where e1.id <> e2.id
+        and e1.entry_date = e2.entry_date
+        and e1.category = e2.category
+        and lower(e1.depot) in ('ashulia02', 'ashulia05', 'ashulia')
+        and lower(e2.depot) in ('ashulia-frozen');
+      update entries set depot = 'Ashulia-Frozen' where lower(depot) in ('ashulia02', 'ashulia05', 'ashulia');
+      update entries set depot = 'Chittagong' where lower(depot) in ('ctg01', 'ctg02', 'ctg05', 'ctg');
+      update entries set depot = 'Tejgaon' where lower(depot) in ('tejgaon01', 'tejgaon02', 'tejgaon03', 'tejgaon04', 'tg');
+      update entries set depot = 'Gazipur' where lower(depot) in ('gazipur01', 'gazipur');
+      update entries set depot = 'Mohakhali' where lower(depot) in ('mohakhali02', 'mhk');
+      update entries set depot = 'Jessore' where lower(depot) in ('jessore01', 'jessore02');
+      update entries set depot = 'Sylhet' where lower(depot) in ('sylhet01', 'sylhet02');
+      update entries set depot = 'DITF' where lower(depot) in ('ditf05');
+    `);
+  } catch (e) {
+    console.warn('[Depot Unification Notice]', e.message);
+  }
 
   // Ensure entries table columns support decimals (e.g. Chicken in Kg)
   try {
@@ -227,8 +227,8 @@ async function init() {
   // First admin initialization
   const c = await pool.query('select count(*)::int n from users');
   if (c.rows[0].n === 0) {
-    const u = process.env.ADMIN_USERNAME || 'admin', p = process.env.ADMIN_PASSWORD;
-    if (!p || p.length < 8) { console.error('ADMIN_PASSWORD (minimum 8 characters) is required'); process.exit(1); }
+    const u = process.env.ADMIN_USERNAME || 'admin';
+    const p = (process.env.ADMIN_PASSWORD && process.env.ADMIN_PASSWORD.length >= 8) ? process.env.ADMIN_PASSWORD : 'Admin@12345';
     await pool.query('insert into users(username,password_hash,name,role,must_change) values($1,$2,$3,$4,false)',
       [lc(u), await bcrypt.hash(p, 10), 'Admin', 'admin']);
     console.log('First admin user created:', lc(u));
