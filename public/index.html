@@ -198,6 +198,108 @@ body {
   }
 }
 
+/* Mobile Smartphone Responsiveness (<= 768px) */
+@media (max-width: 768px) {
+  .w {
+    padding: 8px;
+  }
+  .header {
+    padding: 10px 12px;
+    gap: 8px;
+  }
+  .brand h1 {
+    font-size: 15px;
+  }
+  .header-actions {
+    width: 100%;
+    gap: 6px;
+  }
+  .header-actions > div {
+    width: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    align-items: center;
+  }
+  .header-actions input[type="date"] {
+    flex: 1 1 115px;
+    font-size: 11px;
+    padding: 4px 6px;
+  }
+  /* Mobile 2-column KPI Grid */
+  .kpi-grid {
+    display: grid !important;
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 8px !important;
+    overflow-x: visible !important;
+  }
+  .kpi-grid .kpi-card {
+    min-width: 0 !important;
+    flex: none !important;
+    padding: 10px 8px;
+  }
+  .kpi-val {
+    font-size: 18px;
+  }
+  .kpi-label {
+    font-size: 10px;
+  }
+  .kpi-sub {
+    font-size: 10px;
+  }
+  .tabs {
+    gap: 4px;
+    padding-bottom: 6px;
+    -webkit-overflow-scrolling: touch;
+  }
+  .tab-btn {
+    padding: 7px 10px;
+    font-size: 12px;
+    flex-shrink: 0;
+  }
+  /* Touch target sizes & mobile inputs */
+  button, input, select {
+    min-height: 38px;
+  }
+  button.sm {
+    min-height: 30px;
+  }
+  .g {
+    grid-template-columns: 1fr !important;
+  }
+  .aligned-form {
+    grid-template-columns: 1fr !important;
+  }
+  /* Mobile Modals - Modern bottom-sheet style */
+  .modal-overlay {
+    padding: 6px;
+    align-items: flex-end;
+  }
+  .modal-box {
+    max-width: 100%;
+    max-height: 94vh;
+    border-radius: 14px 14px 0 0;
+  }
+  .modal-header {
+    padding: 10px 14px;
+  }
+  .modal-body {
+    padding: 12px 10px;
+  }
+  /* Table horizontal scroll with smooth swipe */
+  .table-wrap {
+    -webkit-overflow-scrolling: touch;
+    border: 1px solid var(--bd);
+    border-radius: 8px;
+  }
+  table {
+    font-size: 12px;
+  }
+  th, td {
+    padding: 6px 8px;
+  }
+}
+
 /* Modals */
 .modal-overlay {
   position: fixed;
@@ -535,6 +637,7 @@ tr:hover td { background: rgba(0,0,0,0.015); }
         <button class="s sm" onclick="setQuickDate('yesterday')" style="padding:4px 7px; font-size:11px;" title="View Yesterday">Yesterday</button>
         <button class="s sm" onclick="setQuickDate('mtd')" style="padding:4px 7px; font-size:11px;" title="Month to Date">MTD</button>
       </div>
+      <button id="btn-install-pwa" class="sm" onclick="triggerPwaInstall()" style="padding:4px 9px; font-size:11px; font-weight:700; background:var(--primary-bg); color:var(--primary); border:1px solid var(--primary); border-radius:6px; cursor:pointer;" title="Install as mobile app on your phone">📱 App</button>
       <button class="sm adm" onclick="openClearDataModal()" style="padding:4px 9px; font-size:12px; font-weight:700; background:var(--bad-bg); color:var(--bad); border:1px solid rgba(239, 68, 68, 0.4); border-radius:6px; cursor:pointer;" title="Clear/delete data for specific date or date range">🗑️ Clear Data</button>
       <button class="sm" onclick="showPw(true)">Change Password</button>
       <button class="sm" onclick="doLogout()">Logout</button>
@@ -5820,6 +5923,40 @@ function printModal(id) {
 }
 
 installModalPrintButtons();
+
+// Service Worker Registration & Mobile PWA App Support
+let deferredPrompt = null;
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredPrompt = e;
+  const btn = document.getElementById('btn-install-pwa');
+  if (btn) {
+    btn.style.background = 'var(--ok)';
+    btn.style.color = '#fff';
+    btn.style.borderColor = 'var(--ok)';
+  }
+});
+
+function triggerPwaInstall() {
+  if (deferredPrompt) {
+    deferredPrompt.prompt();
+    deferredPrompt.userChoice.then((choiceResult) => {
+      deferredPrompt = null;
+    });
+  } else {
+    alert('📱 মোবাইল স্ক্রিনে অ্যাপ হিসেবে ব্যবহারের নিয়ম:\n\n1. Android (Chrome): ব্রাউজারের উপরে ডানদিকের ৩-ডট মেন্যুতে (⋮) ট্যাপ করুন এবং "Install App" অথবা "Add to Home Screen" সিলেক্ট করুন।\n\n2. iPhone (Safari): ব্রাউজারের নিচে Share আইকনে (বক্স ও তীরচিহ্ন) ট্যাপ করে "Add to Home Screen" সিলেক্ট করুন।\n\nএতে হোম স্ক্রিনে "Paragon Ops" অ্যাপের মতো আইকন চলে আসবে এবং ফুল-স্ক্রিনে কাজ করা যাবে।');
+  }
+}
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').then((reg) => {
+      console.log('Paragon Ops PWA Service Worker registered:', reg.scope);
+    }).catch((err) => {
+      console.log('Service Worker registration skipped:', err);
+    });
+  });
+}
 
 // Start app
 boot();
