@@ -1,0 +1,4 @@
+/api/*  /.netlify/functions/api/:splat  200!
+/healthz  /.netlify/functions/api/healthz  200!
+/ping  /.netlify/functions/api/ping  200!
+/*  /index.html  200

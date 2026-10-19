@@ -9,15 +9,56 @@ const { spawn } = require('child_process');
 
 const prod = process.env.NODE_ENV === 'production';
 const sessionSecret = process.env.SESSION_SECRET || 'daily-update-prod-secret-fallback-key-9988';
-if (!process.env.DATABASE_URL) { console.error('DATABASE_URL is not set'); process.exit(1); }
+
+const dbUrl = process.env.DATABASE_URL;
+if (!dbUrl && !process.env.VERCEL && !process.env.NETLIFY) {
+  console.warn('[DB] DATABASE_URL is not set. Database operations will fail until configured.');
+}
 
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.PGSSL === 'false' ? false : (prod ? { rejectUnauthorized: false } : false)
+  connectionString: dbUrl || 'postgres://localhost:5432/dummy',
+  ssl: process.env.PGSSL === 'false' ? false : (prod || !!process.env.VERCEL || !!process.env.NETLIFY ? { rejectUnauthorized: false } : false)
 });
 
 const app = express();
 app.set('trust proxy', 1);
+
+let dbInitialized = false;
+let dbInitPromise = null;
+
+async function ensureDb() {
+  if (dbInitialized) return;
+  if (!dbInitPromise) {
+    dbInitPromise = init().then(() => {
+      dbInitialized = true;
+    }).catch(err => {
+      dbInitPromise = null;
+      console.error('[DB Init] Error during schema initialization:', err.message);
+      throw err;
+    });
+  }
+  return dbInitPromise;
+}
+
+// Path normalization: ensure serverless functions routed via Netlify match /api/... seamlessly
+app.use((req, res, next) => {
+  if (!req.url.startsWith('/api') && !req.url.startsWith('/healthz') && !req.url.startsWith('/ping') && !req.url.startsWith('/manifest') && !req.url.startsWith('/icon')) {
+    req.url = '/api' + (req.url.startsWith('/') ? req.url : '/' + req.url);
+  }
+  next();
+});
+
+// Auto-initialize DB schema on first incoming API request (serverless safe)
+app.use(async (req, res, next) => {
+  if (req.path.startsWith('/api/')) {
+    try {
+      await ensureDb();
+    } catch (err) {
+      return res.status(500).json({ error: 'Database connection error: ' + (err.message || err) });
+    }
+  }
+  next();
+});
 
 // Lightweight health check & keep-alive ping endpoints (Zero DB load, fast HTTP 200)
 app.get(['/healthz', '/ping', '/api/health'], (req, res) => {
@@ -1415,7 +1456,15 @@ app.delete('/api/resets/:id', auth, admin, wrap(async (req, res) => {
   res.json({ ok: true });
 }));
 
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, 'public'), {
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.html') || filePath.endsWith('sw.js')) {
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+    }
+  }
+}));
 app.use((err, req, res, next) => { console.error(err); res.status(500).json({ error: 'Internal server error' }); });
 
 // Keep-Alive Self-Ping Daemon for Render Free Tier (pings every 10 mins to prevent idle spin-down)
@@ -1442,10 +1491,18 @@ function startKeepAlive() {
   }, intervalMs);
 }
 
-init().then(() => {
-  const port = process.env.PORT || 3000;
-  app.listen(port, () => {
-    console.log('Running on', port);
-    startKeepAlive();
-  });
-}).catch(e => { console.error(e); process.exit(1); });
+if (!process.env.VERCEL && !process.env.NETLIFY && !process.env.AWS_LAMBDA_FUNCTION_NAME) {
+  init().then(() => {
+    const port = process.env.PORT || 3000;
+    app.listen(port, () => {
+      console.log('Running on', port);
+      if (process.env.ENABLE_KEEP_ALIVE === 'true') {
+        startKeepAlive();
+      } else {
+        console.log('[Keep-Alive] Disabled by default to preserve free tier hours.');
+      }
+    });
+  }).catch(e => { console.error(e); process.exit(1); });
+}
+
+module.exports = app;
