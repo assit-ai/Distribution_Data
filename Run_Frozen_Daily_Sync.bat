@@ -38,10 +38,13 @@ echo.
 echo Running Automated Poloxy Extraction (Category: %CAT_ARG%)...
 
 set RUNNER=python sync_frozen_daily.py
-if exist "Paragon_ERP_Sync.exe" (
-    set RUNNER=Paragon_ERP_Sync.exe
-) else if exist "..\Paragon_ERP_Sync.exe" (
-    set RUNNER=..\Paragon_ERP_Sync.exe
+python --version >nul 2>&1
+if errorlevel 1 (
+    if exist "Paragon_ERP_Sync.exe" (
+        set RUNNER=Paragon_ERP_Sync.exe
+    ) else if exist "..\Paragon_ERP_Sync.exe" (
+        set RUNNER=..\Paragon_ERP_Sync.exe
+    )
 )
 
 if "%START_DATE%"=="" (

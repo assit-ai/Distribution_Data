@@ -982,7 +982,35 @@ def run_sync_pipeline(start_date_str=None, end_date_str=None, category_filter='a
         wb.save(out_excel)
         print(f"\n[OK] Ready Master Excel generated: {out_excel}")
 
+    # Push directly to live Netlify portal
+    try:
+        push_to_live_portal(all_results)
+    except Exception as e:
+        print(f"[!] Notice: Portal push error: {e}")
+
     return all_results
+
+def push_to_live_portal(results, portal_url=None, sync_token=None):
+    if not results:
+        return
+    url = (portal_url or os.environ.get("PORTAL_URL") or "https://order-vs-delivery.netlify.app").rstrip('/')
+    token = sync_token or os.environ.get("SYNC_TOKEN") or "paragon-erp-sync-token-2026"
+    endpoint = f"{url}/api/sync/push"
+    print(f"\n[*] Connecting to live portal: {endpoint}")
+    try:
+        payload = json.dumps({"token": token, "items": results}).encode('utf-8')
+        req = urllib.request.Request(endpoint, data=payload, headers={
+            "Content-Type": "application/json",
+            "x-sync-token": token,
+            "User-Agent": "Paragon-ERP-Sync-Runner/1.0"
+        })
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            data = resp.read().decode('utf-8')
+            res = json.loads(data)
+            print(f"[SUCCESS] ✅ Live Portal Updated! Saved {res.get('saved', len(results))} records directly to database.")
+    except Exception as e:
+        print(f"[!] Live portal auto-push notice: {e}")
+        print(f"[*] (You can also upload the generated Excel file to https://order-vs-delivery.netlify.app)")
 
 # Backward compatibility alias
 def run_frozen_sync(target_date_str=None, export_excel=False):

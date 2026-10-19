@@ -666,12 +666,12 @@ tr:hover td { background: rgba(0,0,0,0.015); }
   <div id="main">
     <!-- Navigation Tabs -->
     <div class="tabs">
-      <button class="tab-btn active adm" onclick="setTab('dash')">📊 Overview & Report</button>
-      <button class="tab-btn" onclick="setTab('entry')">📝 Daily Entry</button>
-      <button class="tab-btn adm" onclick="setTab('fleet')">🚚 Dispatched Vans & Fleet</button>
-      <button class="tab-btn adm" onclick="setTab('vanreg')">🚐 Van Registration (Bulk)</button>
-      <button class="tab-btn adm" onclick="setTab('bulk')">⚡ Bulk Upload (ERP/Excel)</button>
-      <button class="tab-btn adm" onclick="setTab('admin')">👥 Users & Categories</button>
+      <button id="btn_tab_dash" class="tab-btn active adm" onclick="setTab('dash')">📊 Overview & Report</button>
+      <button id="btn_tab_entry" class="tab-btn" onclick="setTab('entry')">📝 Daily Entry</button>
+      <button id="btn_tab_fleet" class="tab-btn adm" onclick="setTab('fleet')">🚚 Dispatched Vans & Fleet</button>
+      <button id="btn_tab_vanreg" class="tab-btn adm" onclick="setTab('vanreg')">🚐 Van Registration (Bulk)</button>
+      <button id="btn_tab_bulk" class="tab-btn adm" onclick="setTab('bulk')">⚡ Bulk Upload (ERP/Excel)</button>
+      <button id="btn_tab_admin" class="tab-btn adm" onclick="setTab('admin')">👥 Users & Categories</button>
     </div>
 
     <!-- ========================================== -->
@@ -679,7 +679,7 @@ tr:hover td { background: rgba(0,0,0,0.015); }
     <!-- ========================================== -->
     <div id="tab-dash" class="adm">
       <!-- Admin Dashboard Controls & Clear Data Toolbar -->
-      <div class="card adm" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; padding:10px 16px; margin-bottom:14px; background:var(--card); border:1px solid var(--bd);">
+      <div id="admin_quick_tools" class="card adm" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; padding:10px 16px; margin-bottom:14px; background:var(--card); border:1px solid var(--bd);">
         <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
           <span style="font-weight:700; font-size:13px; color:var(--tx);">🛠️ Admin Quick Tools:</span>
           <span class="sub" style="font-size:12px;">Active Date: <b id="dash_active_date_label" style="color:var(--ac)">–</b></span>
@@ -751,10 +751,10 @@ tr:hover td { background: rgba(0,0,0,0.015); }
       </div>
 
       <!-- Sales & Distribution Performance & Highlights (Admin / Cluster Head) -->
-      <div class="card adm">
+      <div class="card adm" id="card_sales_performance">
         <div class="card-header" style="flex-wrap:wrap; gap:8px;">
           <div class="card-title">📈 Sales & Distribution Performance & Highlights</div>
-          <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+          <div id="sales_perf_actions" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
             <button class="s sm" type="button" onclick="openCategoryTargetsModal()" style="display:inline-flex; align-items:center; gap:5px; font-weight:600;"><span style="font-size:13px;">🎯</span> Set / Upload Category Targets</button>
             <button class="s sm" type="button" onclick="autoDetectTopLowDepots(true)" style="display:inline-flex; align-items:center; gap:5px; font-weight:600;"><span style="font-size:13px;">✨</span> Auto-Calculate Top/Low Depots</button>
             <button class="p sm" onclick="saveReportData()">Save Performance & Issues</button>
@@ -825,7 +825,7 @@ tr:hover td { background: rgba(0,0,0,0.015); }
       </div>
 
       <!-- Category Distribution Summary Table -->
-      <div class="card">
+      <div class="card" id="card_cluster_summary">
         <div class="card-header">
           <div class="card-title">📦 Cluster Distribution Summary (Category-wise)</div>
           <span class="sub" style="font-size:12px; color:var(--primary); font-weight:600;">🔍 Click any category or number below to view Depot-wise breakdown</span>
@@ -849,7 +849,7 @@ tr:hover td { background: rgba(0,0,0,0.015); }
       </div>
 
       <!-- WhatsApp Generator Card -->
-      <div class="card">
+      <div class="card" id="card_whatsapp_generator">
         <div class="card-header">
           <div class="card-title">📱 WhatsApp Daily Update Generator</div>
           <div class="btn-row" style="margin:0">
@@ -861,7 +861,7 @@ tr:hover td { background: rgba(0,0,0,0.015); }
       </div>
 
       <!-- Depot Submission Checklist -->
-      <div class="card">
+      <div class="card" id="card_depot_checklist">
         <div class="card-header">
           <div class="card-title">📋 Depot Submission Live Status</div>
         </div>
@@ -1300,6 +1300,15 @@ Savar	DM-THA-12-3040	Abdul Ali	01811000002	2.0 Ton Van	active" oninput="parsePas
           </div>
           <span class="sub" style="font-size:12px;">Direct ERP Login & Database Auto-Save</span>
         </div>
+        <div style="background:rgba(37,99,235,0.06); border-left:4px solid var(--primary); padding:10px 14px; border-radius:6px; margin-bottom:12px;">
+          <div style="font-weight:700; color:var(--primary); font-size:13px; margin-bottom:3px;">
+            💡 ক্লাউড সার্ভার নোটিশ ও ১-ক্লিক অটো সিঙ্ক সমাধান
+          </div>
+          <div style="font-size:12px; line-height:1.45; color:var(--tx);">
+            Netlify ক্লাউড সার্ভার বাইরে থাকায় Paragon-এর লোকাল অফিস নেটওয়ার্কের সার্ভার (<b>erp.paragon.com.bd</b>) থেকে সরাসরি ব্রাউজারে পুল করতে পারে না।<br>
+            ১-ক্লিকে ফুল অটো সিঙ্ক করার জন্য আপনার কম্পিউটারে রাখা <b>Run_Frozen_Daily_Sync.bat</b> ফাইলে ডাবল ক্লিক করুন—এটি স্বয়ংক্রিয়ভাবে ERP ডাটা বের করে সরাসরি এই লাইভ পোর্টালে ডাটাবেজে সেভ করে দেবে! অথবা জেনারেট হওয়া Master Excel ফাইলটি নিচের বক্সে আপলোড করুন।
+          </div>
+        </div>
         <p class="sub" style="margin-bottom:12px;">
           Automatically logs in to <b>Poloxy ERP (erp.paragon.com.bd)</b>, extracts <b>Orders, Delivered (Today & MTD), Closing Stock</b> across depots for <b>Frozen Foods, Process Chicken, and Branded Eggs</b>, calculates daily sales averages and stock covers, and saves directly into the database.
         </p>
@@ -1557,7 +1566,12 @@ Savar	Egg	42000	7500" oninput="parsePastedTable()"></textarea>
           </div>
           <div>
             <label>Role</label>
-            <select id="nr"><option value="depot">Depot User</option><option value="admin">Cluster Head / Admin</option></select>
+            <select id="nr">
+              <option value="depot">Depot User</option>
+              <option value="admin">Admin / Cluster Head</option>
+              <option value="director">Director Madam / Executive (Dashboard & Variance Only)</option>
+              <option value="superadmin">Super Admin (Full Access)</option>
+            </select>
           </div>
           <div>
             <label>Assigned Depots</label>
@@ -2354,11 +2368,15 @@ function depotMatches(d1, d2) {
 }
 
 function allowed() {
-  return me.role === 'admin' ? deps : me.depots;
+  return (me.role === 'admin' || me.role === 'superadmin' || me.role === 'director') ? deps : me.depots;
 }
 
 // Tab Switching
 function setTab(tabName) {
+  const isDirector = me && (me.role === 'director' || (me.username === 'admin' && me.role !== 'superadmin'));
+  if (isDirector) {
+    tabName = 'dash';
+  }
   ['dash', 'entry', 'fleet', 'vanreg', 'bulk', 'admin'].forEach(t => {
     const el = $('tab-' + t);
     if (el) el.classList.toggle('hid', t !== tabName);
@@ -2514,13 +2532,72 @@ async function boot() {
   $('login').classList.add('hid');
   $('app').classList.remove('hid');
 
-  const rolePill = me.role === 'admin'
-    ? '<span class="badge badge-admin">Admin / Cluster Head</span>'
-    : '<span class="badge badge-depot">Depot User</span>';
+  const isSuperAdmin = me.role === 'superadmin';
+  const isDirector = me.role === 'director' || (me.username === 'admin' && me.role !== 'superadmin');
+  const isAdmin = isSuperAdmin || me.role === 'admin';
+
+  let rolePill = '<span class="badge badge-depot">Depot User</span>';
+  if (isSuperAdmin) {
+    rolePill = '<span class="badge" style="background:linear-gradient(135deg, #4f46e5, #7c3aed); color:#fff; font-weight:700;">Super Admin</span>';
+  } else if (isDirector) {
+    rolePill = '<span class="badge" style="background:linear-gradient(135deg, #0284c7, #0369a1); color:#fff; font-weight:700;">Director Madam / Executive</span>';
+  } else if (me.role === 'admin') {
+    rolePill = '<span class="badge badge-admin">Admin / Cluster Head</span>';
+  }
   $('who').innerHTML = `<b>${esc(me.name || me.username)}</b> · ${esc(me.designation || '')} · ${rolePill} (ID: ${esc(me.username)})`;
 
-  const isAdmin = me.role === 'admin';
-  document.querySelectorAll('.adm').forEach(el => el.classList.toggle('hid', !isAdmin));
+  // Toggle general admin visibility
+  document.querySelectorAll('.adm').forEach(el => el.classList.toggle('hid', !isAdmin && !isDirector));
+
+  // Role-specific layout rules
+  if (isDirector) {
+    // 1. Hide other tab buttons from navigation so Director Madam stays strictly on Dashboard
+    ['btn_tab_entry', 'btn_tab_fleet', 'btn_tab_vanreg', 'btn_tab_bulk', 'btn_tab_admin'].forEach(id => {
+      const btn = $(id);
+      if (btn) btn.classList.add('hid');
+    });
+    if ($('btn_tab_dash')) $('btn_tab_dash').classList.remove('hid');
+
+    // 2. Hide Admin Quick Tools toolbar in tab-dash
+    if ($('admin_quick_tools')) $('admin_quick_tools').classList.add('hid');
+
+    // 3. Make Sales Performance inputs read-only & hide save buttons
+    if ($('sales_perf_actions')) $('sales_perf_actions').classList.add('hid');
+    ['head', 'st', 'stt', 'sm', 'smt', 'top_depot', 'low_depot', 'iss'].forEach(id => {
+      const input = $(id);
+      if (input) {
+        input.readOnly = true;
+        input.style.backgroundColor = 'transparent';
+      }
+    });
+
+    // 4. STRICTLY HIDE EVERYTHING BELOW "Order vs Delivery Variance & Backlog Analysis"
+    if ($('card_cluster_summary')) $('card_cluster_summary').classList.add('hid');
+    if ($('card_whatsapp_generator')) $('card_whatsapp_generator').classList.add('hid');
+    if ($('card_depot_checklist')) $('card_depot_checklist').classList.add('hid');
+  } else {
+    // Super Admin / Regular Admin: Restore full features
+    ['btn_tab_entry', 'btn_tab_fleet', 'btn_tab_vanreg', 'btn_tab_bulk', 'btn_tab_admin', 'btn_tab_dash'].forEach(id => {
+      const btn = $(id);
+      if (btn && btn.classList.contains('adm')) {
+        btn.classList.toggle('hid', !isAdmin);
+      } else if (btn) {
+        btn.classList.remove('hid');
+      }
+    });
+    if ($('admin_quick_tools')) $('admin_quick_tools').classList.toggle('hid', !isAdmin);
+    if ($('sales_perf_actions')) $('sales_perf_actions').classList.toggle('hid', !isAdmin);
+    ['head', 'st', 'stt', 'sm', 'smt', 'top_depot', 'low_depot', 'iss'].forEach(id => {
+      const input = $(id);
+      if (input) {
+        input.readOnly = !isAdmin;
+        input.style.backgroundColor = '';
+      }
+    });
+    if ($('card_cluster_summary')) $('card_cluster_summary').classList.remove('hid');
+    if ($('card_whatsapp_generator')) $('card_whatsapp_generator').classList.remove('hid');
+    if ($('card_depot_checklist')) $('card_depot_checklist').classList.remove('hid');
+  }
 
   // Set default today date in local timezone
   const local = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10);
@@ -2543,7 +2620,7 @@ async function boot() {
     loadUsers();
     loadErpDepots();
   }
-  setTab(isAdmin ? 'dash' : 'entry');
+  setTab((isAdmin || isDirector) ? 'dash' : 'entry');
   setInterval(() => { if (!document.hidden && me && !me.must_change) loadAll(true); }, 30000);
 }
 
@@ -5104,8 +5181,10 @@ async function loadUsers() {
         <td><input id="um${i}" type="tel" value="${esc(u.mobile || '')}" style="padding:4px 6px;"></td>
         <td>
           <select id="ur${i}" style="padding:4px 6px;">
-            <option value="depot" ${u.role === 'depot' ? 'selected' : ''}>Depot</option>
-            <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>Admin</option>
+            <option value="superadmin" ${u.role === 'superadmin' ? 'selected' : ''}>Super Admin</option>
+            <option value="director" ${u.role === 'director' ? 'selected' : ''}>Director Madam / Executive</option>
+            <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>Admin / Cluster Head</option>
+            <option value="depot" ${u.role === 'depot' ? 'selected' : ''}>Depot User</option>
           </select>
         </td>
         <td><input id="ud${i}" value="${esc((u.depots || []).join(', '))}" style="padding:4px 6px;" placeholder="Gazipur, Savar"></td>
@@ -5409,10 +5488,18 @@ async function runPoloxyAutoSync() {
     await loadDispatches(true);
   } catch (err) {
     if (statusEl) {
-      statusEl.innerHTML = `<span style="color:var(--bad); font-weight:700;">✗ Sync Failed: ${esc(err.message)}</span>`;
+      statusEl.innerHTML = `
+        <div style="background:var(--bad-bg); border:1.5px solid var(--bad); color:var(--bad); padding:12px 16px; border-radius:8px; margin-top:8px;">
+          <div style="font-weight:700; font-size:13.5px; margin-bottom:4px;">⚠️ ক্লাউড সার্ভার ERP সংযোগ নোটিশ</div>
+          <div style="font-size:12px; color:var(--tx); line-height:1.45;">
+            Netlify ক্লাউড সার্ভার বাইরে থাকায় সরাসরি Paragon লোকাল অফিস নেটওয়ার্কের <b>erp.paragon.com.bd</b>-তে ব্রাউজার থেকে সংযোগ করা সম্ভব নয়।<br>
+            👉 <b>সহজ সমাধান:</b> আপনার অফিসের কম্পিউটারে <b>Run_Frozen_Daily_Sync.bat</b> ফাইলটিতে ডাবল-ক্লিক করুন। এটি এক ক্লিকেই ERP ডাটা বের করে সরাসরি লাইভ পোর্টালে অটো-সেভ করে দেবে! অথবা জেনারেট হওয়া Master Excel ফাইলটি নিচে আপলোড করুন।
+          </div>
+        </div>
+      `;
     }
     if (logBox) {
-      logBox.textContent += `\n\n[!] Error Details: ${err.message}\n[!] If running on cloud container without direct ERP access, run 'Run_Frozen_Daily_Sync.bat' locally on your office network.`;
+      logBox.textContent += `\n\n[!] Error Details: ${err.message}\n[!] Note: Netlify cloud server cannot reach local office ERP (erp.paragon.com.bd).\n[!] Run 'Run_Frozen_Daily_Sync.bat' locally on your office PC to auto-push directly to this portal.`;
     }
     msg('Sync error: ' + err.message);
   } finally {
