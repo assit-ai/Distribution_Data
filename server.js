@@ -15,9 +15,12 @@ if (!dbUrl && !process.env.VERCEL && !process.env.NETLIFY) {
   console.warn('[DB] DATABASE_URL is not set. Database operations will fail until configured.');
 }
 
+const isRemoteDb = Boolean(dbUrl && !dbUrl.includes('localhost') && !dbUrl.includes('127.0.0.1'));
+const sslConfig = process.env.PGSSL === 'false' ? false : (isRemoteDb ? { rejectUnauthorized: false } : false);
+
 const pool = new Pool({
   connectionString: dbUrl || 'postgres://localhost:5432/dummy',
-  ssl: process.env.PGSSL === 'false' ? false : (prod || !!process.env.VERCEL || !!process.env.NETLIFY ? { rejectUnauthorized: false } : false)
+  ssl: sslConfig
 });
 
 const app = express();
