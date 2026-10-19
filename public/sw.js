@@ -1,6 +1,11 @@
-const CACHE_NAME = 'paragon-ops-v2';
+const CACHE_NAME = 'paragon-ops-v3';
 const ASSETS = [
   '/manifest.json',
+  '/favicon.ico',
+  '/favicon-32x32.png',
+  '/favicon-16x16.png',
+  '/apple-touch-icon.png',
+  '/icon-192.png',
   '/icon.svg'
 ];
 
