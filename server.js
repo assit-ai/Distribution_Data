@@ -98,7 +98,7 @@ async function init() {
   await pool.query(`
     create table if not exists users(
       id serial primary key, username text unique not null, password_hash text not null,
-      name text not null default '', role text not null default 'depot' check (role in ('admin','depot')),
+      name text not null default '', role text not null default 'depot',
       depots text[] not null default '{}', created_at timestamptz not null default now());
     create table if not exists categories(
       id serial primary key, name text unique not null, display_order int not null default 0,
@@ -268,14 +268,49 @@ async function init() {
   }
   await syncDepotMappingsToFile();
 
-  // First admin initialization
-  const c = await pool.query('select count(*)::int n from users');
-  if (c.rows[0].n === 0) {
-    const u = process.env.ADMIN_USERNAME || 'admin';
-    const p = (process.env.ADMIN_PASSWORD && process.env.ADMIN_PASSWORD.length >= 8) ? process.env.ADMIN_PASSWORD : 'Admin@12345';
-    await pool.query('insert into users(username,password_hash,name,role,must_change) values($1,$2,$3,$4,false)',
-      [lc(u), await bcrypt.hash(p, 10), 'Admin', 'admin']);
-    console.log('First admin user created:', lc(u));
+  // Update user role check constraint to support superadmin, director, admin, depot
+  try {
+    await pool.query(`
+      alter table users drop constraint if exists users_role_check;
+      alter table users add constraint users_role_check check (role in ('superadmin', 'admin', 'director', 'depot'));
+    `);
+  } catch (e) {
+    console.warn('[Schema Update Notice]', e.message);
+  }
+
+  // User roles & migration: Replace present admin user with superadmin, and ensure Director Madam has 'admin' ID
+  try {
+    const superAdminCheck = await pool.query("select id from users where username = 'superadmin'");
+    if (superAdminCheck.rows.length === 0) {
+      const existingAdmin = await pool.query("select id, username, password_hash from users where username = 'admin'");
+      if (existingAdmin.rows.length > 0) {
+        // Upgrade current admin user to superadmin (keeps user's current password!)
+        await pool.query(`
+          update users set username = 'superadmin', name = 'Super Admin', role = 'superadmin'
+          where id = $1
+        `, [existingAdmin.rows[0].id]);
+        console.log("[Migration] Successfully replaced present admin user with 'superadmin' (Super Admin)");
+      } else {
+        const u = 'superadmin';
+        const p = (process.env.ADMIN_PASSWORD && process.env.ADMIN_PASSWORD.length >= 8) ? process.env.ADMIN_PASSWORD : 'Admin@12345';
+        await pool.query('insert into users(username,password_hash,name,role,must_change) values($1,$2,$3,$4,false)',
+          [lc(u), await bcrypt.hash(p, 10), 'Super Admin', 'superadmin']);
+        console.log('[Migration] Superadmin user created: superadmin');
+      }
+    }
+
+    // Ensure dedicated ID 'admin' exists for Director Madam
+    const directorAdminCheck = await pool.query("select id from users where username = 'admin'");
+    if (directorAdminCheck.rows.length === 0) {
+      const p = 'Admin@12345';
+      await pool.query(`
+        insert into users(username, password_hash, name, role, designation, must_change)
+        values('admin', $1, 'Director Madam', 'director', 'Director', false)
+      `, [await bcrypt.hash(p, 10)]);
+      console.log("[Migration] Created dedicated 'admin' account for Director Madam (Role: director)");
+    }
+  } catch (e) {
+    console.warn('[User Init Notice]', e.message);
   }
 }
 
@@ -375,15 +410,21 @@ const auth = wrap(async (req, res, next) => {
   req.user = r.rows[0];
   next();
 });
-const admin = (req, res, next) => req.user.role === 'admin' ? next() : res.status(403).json({ error: 'Admin access required' });
+const isSuperAdmin = (u) => u && u.role === 'superadmin';
+const isAdminOrSuper = (u) => u && (u.role === 'admin' || u.role === 'superadmin');
+const isExecutive = (u) => u && (u.role === 'admin' || u.role === 'superadmin' || u.role === 'director');
+
+const admin = (req, res, next) => isAdminOrSuper(req.user) ? next() : res.status(403).json({ error: 'Admin access required' });
+const superadmin = (req, res, next) => isSuperAdmin(req.user) ? next() : res.status(403).json({ error: 'Super Admin access required' });
+
 async function allDepots() {
   const r = await pool.query('select distinct unnest(depots) d from users order by 1');
   return r.rows.map(x => x.d);
 }
-async function allowedDepots(u) { return u.role === 'admin' ? allDepots() : (u.depots || []); }
+async function allowedDepots(u) { return isExecutive(u) ? allDepots() : (u.depots || []); }
 async function allowedCategories(u) {
   const all = await getAllCategories();
-  if (u.role === 'admin') return all;
+  if (isExecutive(u)) return all;
   if (!u.categories || !u.categories.length) return all;
   const filtered = all.filter(c => u.categories.some(uc => lc(uc) === lc(c)));
   return filtered.length ? filtered : all;
@@ -517,7 +558,7 @@ app.get('/api/entries', auth, wrap(async (req, res) => {
       coalesce(e.remarks, '') remarks, e.updated_at, u.name "by"
       from entries e left join users u on u.id=e.updated_by where e.entry_date=$1`;
     params = [from];
-    if (req.user.role !== 'admin') {
+    if (!isAdminOrSuper(req.user) && req.user.role !== 'director') {
       const allowedD = (await allowedDepots(req.user)).map(lc);
       const allowedC = (await allowedCategories(req.user)).map(lc);
       query += ` and lower(e.depot) = any($2) and lower(e.category) = any($3)`;
@@ -552,7 +593,7 @@ app.get('/api/entries', auth, wrap(async (req, res) => {
       where e.entry_date between $1 and $2
     `;
     params = [from, to];
-    if (req.user.role !== 'admin') {
+    if (!isAdminOrSuper(req.user) && req.user.role !== 'director') {
       const allowedD = (await allowedDepots(req.user)).map(lc);
       const allowedC = (await allowedCategories(req.user)).map(lc);
       query += ` and lower(e.depot) = any($3) and lower(e.category) = any($4)`;
@@ -637,7 +678,7 @@ app.post('/api/bulk/entries', auth, wrap(async (req, res) => {
     }
 
     const rawDepot = String(it.depot || '').trim();
-    const depot = findDepot(allowed, rawDepot) || getCanonicalDepotName(rawDepot, allowed) || (req.user.role === 'admin' ? getCanonicalDepotName(rawDepot) : null);
+    const depot = findDepot(allowed, rawDepot) || getCanonicalDepotName(rawDepot, allowed) || (isAdminOrSuper(req.user) ? getCanonicalDepotName(rawDepot) : null);
     if (!depot) {
       skipped++;
       skippedDetails.push(`Unrecognized depot: "${rawDepot}"`);
@@ -645,7 +686,7 @@ app.post('/api/bulk/entries', auth, wrap(async (req, res) => {
     }
 
     const rawCat = String(it.category || '').trim();
-    const cat = allCats.find(c => lc(c) === lc(rawCat)) || (req.user.role === 'admin' ? (rawCat || 'Frozen') : null);
+    const cat = allCats.find(c => lc(c) === lc(rawCat)) || (isAdminOrSuper(req.user) ? (rawCat || 'Frozen') : null);
     if (!cat) {
       skipped++;
       skippedDetails.push(`Unrecognized category: "${rawCat}" for depot ${depot}`);
@@ -706,7 +747,11 @@ app.post('/api/admin/sync-erp', auth, admin, wrap(async (req, res) => {
   const scriptPath = path.join(__dirname, 'sync_frozen_daily.py');
 
   if (!fs.existsSync(scriptPath)) {
-    return res.status(500).json({ error: 'sync_frozen_daily.py script not found on server' });
+    return res.status(500).json({
+      error: 'Netlify Cloud Server সরাসরি Paragon লোকাল অফিস নেটওয়ার্কের (erp.paragon.com.bd) সাথে যুক্ত হতে পারে না। অনুগ্রহ করে আপনার কম্পিউটারে রাখা Run_Frozen_Daily_Sync.bat চালু করুন অথবা Master Excel ফাইলটি আপলোড করুন।',
+      code: 'CLOUD_ENV_NO_LOCAL_ERP',
+      suggestion: "Run 'Run_Frozen_Daily_Sync.bat' locally on your office network"
+    });
   }
 
   const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
@@ -866,7 +911,7 @@ app.get('/api/dispatches', auth, wrap(async (req, res) => {
     where vd.entry_date between $1 and $2 order by vd.entry_date, vd.depot, vd.dispatch_time, vd.id`;
   const r = await pool.query(query, [from, to]);
   let rows = r.rows;
-  if (req.user.role !== 'admin') {
+  if (!isAdminOrSuper(req.user) && req.user.role !== 'director') {
     const allowedD = await allowedDepots(req.user);
     rows = rows.filter(item => allowedD.some(ad => depotMatches(item.depot, ad)));
   }
@@ -918,7 +963,7 @@ app.get('/api/registered-vans', auth, wrap(async (req, res) => {
   let query = `select id, depot, vehicle_no, driver_name, driver_mobile, vehicle_type, status, created_at from registered_vans order by depot, vehicle_no`;
   const r = await pool.query(query);
   let rows = r.rows;
-  if (req.user.role !== 'admin') {
+  if (!isAdminOrSuper(req.user) && req.user.role !== 'director') {
     const allowedD = await allowedDepots(req.user);
     rows = rows.filter(v => allowedD.some(ad => depotMatches(v.depot, ad)));
   } else if (req.query.depot) {
@@ -949,7 +994,11 @@ app.post('/api/auto-sync', auth, admin, wrap(async (req, res) => {
 
   const scriptPath = path.join(__dirname, 'sync_frozen_daily.py');
   if (!fs.existsSync(scriptPath)) {
-    return res.status(500).json({ error: 'sync_frozen_daily.py script not found on server' });
+    return res.status(500).json({
+      error: 'Netlify Cloud Server সরাসরি Paragon লোকাল অফিস নেটওয়ার্কের (erp.paragon.com.bd) সাথে যুক্ত হতে পারে না। অনুগ্রহ করে আপনার কম্পিউটারে রাখা Run_Frozen_Daily_Sync.bat চালু করুন অথবা Master Excel ফাইলটি আপলোড করুন।',
+      code: 'CLOUD_ENV_NO_LOCAL_ERP',
+      suggestion: "Run 'Run_Frozen_Daily_Sync.bat' locally on your office network"
+    });
   }
 
   const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
@@ -1070,6 +1119,76 @@ app.post('/api/auto-sync', auth, admin, wrap(async (req, res) => {
         stdout: stdoutData
       });
     }
+  });
+}));
+
+// ---------- Direct Push Endpoint for Local Runner (Run_Frozen_Daily_Sync.bat) ----------
+app.post('/api/sync/push', wrap(async (req, res) => {
+  const token = req.headers['x-sync-token'] || req.body.token || req.query.token;
+  const expectedToken = process.env.SYNC_TOKEN || 'paragon-erp-sync-token-2026';
+  if (!token || token !== expectedToken) {
+    return res.status(401).json({ error: 'Unauthorized: Invalid sync token' });
+  }
+
+  const items = req.body.items || [];
+  if (!Array.isArray(items) || !items.length) {
+    return res.status(400).json({ error: 'No items provided for sync push' });
+  }
+
+  let saved = 0;
+  let totalDeliveryAmt = 0;
+  const allCats = await getAllCategories();
+  const allDeps = await allDepots();
+
+  for (const item of items) {
+    let eDate = String(item.entry_date || item.date || '').trim();
+    if (/^\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4}$/.test(eDate)) {
+      const p = eDate.split(/[\/\-]/);
+      eDate = `${p[2]}-${p[1].padStart(2, '0')}-${p[0].padStart(2, '0')}`;
+    }
+    if (!DATE.test(eDate)) continue;
+
+    const rawDepot = String(item.depot || '').trim();
+    const depot = findDepot(allDeps, rawDepot) || getCanonicalDepotName(rawDepot) || rawDepot;
+    if (!depot) continue;
+
+    const rawCat = String(item.category || '').trim();
+    const cat = allCats.find(c => lc(c) === lc(rawCat)) || rawCat || 'Frozen';
+
+    const orders = Number(item.orders) || 0;
+    const delivered = Number(item.delivered) || 0;
+    const stock = Number(item.stock) || 0;
+    const avg = Number(item.avg_daily != null ? item.avg_daily : item.avg_daily_mtd) || 0;
+    const pendingOrders = item.pending_orders != null ? Number(item.pending_orders) : ((orders > delivered) ? 1 : 0);
+    const totalOrdersCount = item.total_orders_count != null ? Number(item.total_orders_count) : ((orders > 0) ? 1 : 0);
+    const pendingSoNums = String(item.pending_so_numbers || '');
+    const remarks = String(item.remarks || '');
+    const delAmt = Number(item.delivery_amount) || 0;
+    totalDeliveryAmt += delAmt;
+
+    await pool.query(`
+      insert into entries(entry_date, depot, category, orders, delivered, stock, avg_daily, pending_orders, total_orders_count, pending_so_numbers, remarks, updated_at)
+      values($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, now())
+      on conflict(entry_date, depot, category) do update set
+        orders=$4, delivered=$5, stock=$6, avg_daily=$7, pending_orders=$8, total_orders_count=$9, pending_so_numbers=$10, remarks=$11, updated_at=now()
+    `, [eDate, depot, cat, orders, delivered, stock, avg, pendingOrders, totalOrdersCount, pendingSoNums, remarks]);
+    saved++;
+  }
+
+  if (totalDeliveryAmt > 0 && items[0]?.entry_date) {
+    try {
+      await pool.query(`
+        insert into reports(report_date, delivery_amount, updated_at)
+        values($1, $2, now())
+        on conflict(report_date) do update set delivery_amount=$2, updated_at=now()
+      `, [items[0].entry_date, totalDeliveryAmt]);
+    } catch (re) {}
+  }
+
+  return res.json({
+    ok: true,
+    saved,
+    message: `Successfully received and saved ${saved} records from local ERP runner!`
   });
 }));
 
@@ -1380,7 +1499,8 @@ app.post('/api/users', auth, admin, wrap(async (req, res) => {
   if (password.length < 8) return res.status(400).json({ error: 'Password must be at least 8 characters long' });
   const mobile = normMobile(b.mobile);
   if (mobile === null) return res.status(400).json({ error: 'Invalid mobile number format' });
-  const role = b.role === 'admin' ? 'admin' : 'depot';
+  const validRoles = ['superadmin', 'director', 'admin', 'depot'];
+  const role = validRoles.includes(b.role) ? b.role : 'depot';
 
   try {
     await pool.query('insert into users(username,password_hash,name,role,depots,categories,mobile,designation,must_change) values($1,$2,$3,$4,$5,$6,$7,$8,false)',
@@ -1396,8 +1516,11 @@ app.post('/api/users', auth, admin, wrap(async (req, res) => {
 app.put('/api/users/:id', auth, admin, wrap(async (req, res) => {
   const id = parseInt(req.params.id, 10), b = req.body;
   if (!id) return res.status(400).json({ error: 'Invalid user ID' });
-  const role = b.role === 'admin' ? 'admin' : 'depot';
-  if (id === req.user.id && role !== 'admin') return res.status(400).json({ error: 'Cannot revoke your own admin role' });
+  const validRoles = ['superadmin', 'director', 'admin', 'depot'];
+  const role = validRoles.includes(b.role) ? b.role : 'depot';
+  if (id === req.user.id && req.user.role === 'superadmin' && role !== 'superadmin') {
+    return res.status(400).json({ error: 'Cannot revoke your own super admin role' });
+  }
   const mobile = normMobile(b.mobile);
   if (mobile === null) return res.status(400).json({ error: 'Invalid mobile number format' });
   const pw = String(b.password || '').trim();
