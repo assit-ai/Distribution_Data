@@ -1,9 +1,8 @@
 {
   "version": 2,
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/server.js" },
-    { "source": "/healthz", "destination": "/server.js" },
-    { "source": "/ping", "destination": "/server.js" },
-    { "source": "/", "destination": "/index.html" }
+    { "source": "/api/(.*)", "destination": "/api" },
+    { "source": "/healthz", "destination": "/api" },
+    { "source": "/ping", "destination": "/api" }
   ]
 }
