@@ -1,5 +1,5 @@
 [build]
-  command = "node -e \"const fs = require('fs'); if (fs.existsSync('index.html')) { fs.copyFileSync('index.html', 'public/index.html'); console.log('Synced root index.html to public/index.html'); }\""
+  command = "node -e \"const fs=require('fs'); if(fs.existsSync('build.js')) { require('./build.js'); } else { if(!fs.existsSync('public')) fs.mkdirSync('public',{recursive:true}); if(!fs.existsSync('netlify/functions')) fs.mkdirSync('netlify/functions',{recursive:true}); if(fs.existsSync('index.html')) fs.copyFileSync('index.html','public/index.html'); if(!fs.existsSync('public/_redirects')) fs.writeFileSync('public/_redirects','/api/*  /.netlify/functions/api/:splat  200!\\n/*  /index.html  200\\n'); }\""
   publish = "public"
   functions = "netlify/functions"
 
