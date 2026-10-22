@@ -43,15 +43,20 @@ async function ensureDb() {
   return dbInitPromise;
 }
 
-// Path normalization: ensure serverless functions routed via Netlify match /api/... seamlessly
-app.use((req, res, next) => {
-  if (!req.url.startsWith('/api') && !req.url.startsWith('/healthz') && !req.url.startsWith('/ping') && !req.url.startsWith('/manifest') && !req.url.startsWith('/icon')) {
-    req.url = '/api' + (req.url.startsWith('/') ? req.url : '/' + req.url);
-  }
-  next();
-});
+// Path normalization: only for Netlify serverless functions where /api was stripped
+if (process.env.NETLIFY) {
+  app.use((req, res, next) => {
+    if (!req.url.startsWith('/api') && !req.url.startsWith('/healthz') && !req.url.startsWith('/ping') && !req.url.startsWith('/manifest') && !req.url.startsWith('/icon')) {
+      req.url = '/api' + (req.url.startsWith('/') ? req.url : '/' + req.url);
+    }
+    next();
+  });
+}
 
-// Auto-initialize DB schema on first incoming API request (serverless safe)
+// Serve static frontend assets from public/ folder
+app.use(express.static(path.join(__dirname, 'public')));
+
+// Auto-initialize DB schema on incoming API request (serverless safe)
 app.use(async (req, res, next) => {
   if (req.path.startsWith('/api/')) {
     try {
@@ -1597,6 +1602,16 @@ app.use(express.static(path.join(__dirname, 'public'), {
     }
   }
 }));
+
+app.get('*', (req, res, next) => {
+  if (req.path.startsWith('/api/')) return next();
+  const indexPath = path.join(__dirname, 'public', 'index.html');
+  if (fs.existsSync(indexPath)) return res.sendFile(indexPath);
+  const rootIndex = path.join(__dirname, 'index.html');
+  if (fs.existsSync(rootIndex)) return res.sendFile(rootIndex);
+  next();
+});
+
 app.use((err, req, res, next) => { console.error(err); res.status(500).json({ error: 'Internal server error' }); });
 
 // Keep-Alive Self-Ping Daemon for Render Free Tier (pings every 10 mins to prevent idle spin-down)
