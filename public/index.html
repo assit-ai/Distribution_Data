@@ -7,6 +7,9 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Paragon Ops">
 <meta name="theme-color" content="#0f766e">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <link rel="manifest" href="/manifest.json">
 <link rel="icon" type="image/x-icon" href="/favicon.ico">
 <link rel="shortcut icon" type="image/x-icon" href="/favicon.ico">
@@ -1569,7 +1572,7 @@ Savar	Egg	42000	7500" oninput="parsePastedTable()"></textarea>
             <select id="nr">
               <option value="depot">Depot User</option>
               <option value="admin">Admin / Cluster Head</option>
-              <option value="director">Director Madam / Executive (Dashboard & Variance Only)</option>
+              <option value="director">Executive (Dashboard & Variance Only)</option>
               <option value="superadmin">Super Admin (Full Access)</option>
             </select>
           </div>
@@ -2540,18 +2543,20 @@ async function boot() {
   if (isSuperAdmin) {
     rolePill = '<span class="badge" style="background:linear-gradient(135deg, #4f46e5, #7c3aed); color:#fff; font-weight:700;">Super Admin</span>';
   } else if (isDirector) {
-    rolePill = '<span class="badge" style="background:linear-gradient(135deg, #0284c7, #0369a1); color:#fff; font-weight:700;">Director Madam / Executive</span>';
+    rolePill = '<span class="badge" style="background:linear-gradient(135deg, #0284c7, #0369a1); color:#fff; font-weight:700;">Executive</span>';
   } else if (me.role === 'admin') {
     rolePill = '<span class="badge badge-admin">Admin / Cluster Head</span>';
   }
-  $('who').innerHTML = `<b>${esc(me.name || me.username)}</b> · ${esc(me.designation || '')} · ${rolePill} (ID: ${esc(me.username)})`;
+  const displayName = isDirector ? 'Executive' : (me.name || me.username);
+  const displayDesig = (isDirector || !me.designation || me.designation.toLowerCase().includes('director')) ? '' : ` · ${esc(me.designation)}`;
+  $('who').innerHTML = `<b>${esc(displayName)}</b>${displayDesig} · ${rolePill} (ID: ${esc(me.username)})`;
 
   // Toggle general admin visibility
   document.querySelectorAll('.adm').forEach(el => el.classList.toggle('hid', !isAdmin && !isDirector));
 
   // Role-specific layout rules
   if (isDirector) {
-    // 1. Hide other tab buttons from navigation so Director Madam stays strictly on Dashboard
+    // 1. Hide other tab buttons from navigation so Executive stays strictly on Dashboard
     ['btn_tab_entry', 'btn_tab_fleet', 'btn_tab_vanreg', 'btn_tab_bulk', 'btn_tab_admin'].forEach(id => {
       const btn = $(id);
       if (btn) btn.classList.add('hid');
@@ -5182,7 +5187,7 @@ async function loadUsers() {
         <td>
           <select id="ur${i}" style="padding:4px 6px;">
             <option value="superadmin" ${u.role === 'superadmin' ? 'selected' : ''}>Super Admin</option>
-            <option value="director" ${u.role === 'director' ? 'selected' : ''}>Director Madam / Executive</option>
+            <option value="director" ${u.role === 'director' ? 'selected' : ''}>Executive (Dashboard & Variance Only)</option>
             <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>Admin / Cluster Head</option>
             <option value="depot" ${u.role === 'depot' ? 'selected' : ''}>Depot User</option>
           </select>

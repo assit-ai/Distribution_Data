@@ -278,7 +278,7 @@ async function init() {
     console.warn('[Schema Update Notice]', e.message);
   }
 
-  // User roles & migration: Replace present admin user with superadmin, and ensure Director Madam has 'admin' ID
+  // User roles & migration: Replace present admin user with superadmin, and ensure Executive has 'admin' ID
   try {
     const superAdminCheck = await pool.query("select id from users where username = 'superadmin'");
     if (superAdminCheck.rows.length === 0) {
@@ -299,15 +299,21 @@ async function init() {
       }
     }
 
-    // Ensure dedicated ID 'admin' exists for Director Madam
-    const directorAdminCheck = await pool.query("select id from users where username = 'admin'");
-    if (directorAdminCheck.rows.length === 0) {
+    // Ensure dedicated ID 'admin' exists for Executive
+    const execAdminCheck = await pool.query("select id from users where username = 'admin'");
+    if (execAdminCheck.rows.length === 0) {
       const p = 'Admin@12345';
       await pool.query(`
         insert into users(username, password_hash, name, role, designation, must_change)
-        values('admin', $1, 'Director Madam', 'director', 'Director', false)
+        values('admin', $1, 'Executive', 'director', 'Executive', false)
       `, [await bcrypt.hash(p, 10)]);
-      console.log("[Migration] Created dedicated 'admin' account for Director Madam (Role: director)");
+      console.log("[Migration] Created dedicated 'admin' account for Executive (Role: director)");
+    } else {
+      // Auto-update any previously saved 'Director Madam' to 'Executive'
+      await pool.query(`
+        update users set name = 'Executive', designation = 'Executive'
+        where username = 'admin' and (name ilike '%director%' or designation ilike '%director%')
+      `);
     }
   } catch (e) {
     console.warn('[User Init Notice]', e.message);
