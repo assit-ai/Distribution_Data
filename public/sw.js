@@ -1,5 +1,6 @@
-const CACHE_NAME = 'paragon-ops-v4';
+const CACHE_NAME = 'paragon-ops-v5';
 const ASSETS = [
+  '/index.html',
   '/manifest.json',
   '/favicon.ico',
   '/favicon-32x32.png',
@@ -36,10 +37,12 @@ self.addEventListener('fetch', (e) => {
           if (response && response.status === 200) {
             const respClone = response.clone();
             caches.open(CACHE_NAME).then((cache) => cache.put(e.request, respClone).catch(() => {}));
+            return response;
           }
-          return response;
+          // Fallback to /index.html if root / or route gave 404
+          return fetch('/index.html', { cache: 'no-cache' });
         })
-        .catch(() => caches.match(e.request))
+        .catch(() => caches.match('/index.html'))
     );
     return;
   }
