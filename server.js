@@ -56,6 +56,15 @@ if (process.env.NETLIFY) {
 // Serve static frontend assets from public/ folder
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Serve index.html directly for root path
+app.get(['/', '/index.html'], (req, res) => {
+  const indexPath = path.join(__dirname, 'public', 'index.html');
+  if (fs.existsSync(indexPath)) return res.sendFile(indexPath);
+  const rootIndex = path.join(__dirname, 'index.html');
+  if (fs.existsSync(rootIndex)) return res.sendFile(rootIndex);
+  res.status(404).send('Portal index.html not found');
+});
+
 // Auto-initialize DB schema on incoming API request (serverless safe)
 app.use(async (req, res, next) => {
   if (req.path.startsWith('/api/')) {
